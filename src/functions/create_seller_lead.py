@@ -1,0 +1,156 @@
+"""
+Function: Create Seller Lead
+Captures and stores seller lead information in CRM
+"""
+
+from fastapi import APIRouter
+from typing import Dict, Any
+from src.models.vapi_models import VapiResponse, CreateSellerLeadRequest
+from src.models.crm_models import Contact, SellerLead, ContactType, LeadStatus
+from src.integrations.boldtrail import BoldTrailClient
+from src.integrations.twilio_client import TwilioClient
+from src.utils.logger import get_logger
+from src.utils.errors import BoldTrailError
+from src.utils.validators import validate_phone, validate_email
+
+logger = get_logger(__name__)
+router = APIRouter()
+
+crm_client = BoldTrailClient()
+twilio_client = TwilioClient()
+
+
+@router.post("/create_seller_lead")
+async def create_seller_lead(request: CreateSellerLeadRequest) -> VapiResponse:
+    """
+    Create a seller lead in the CRM
+    
+    This function captures seller information including:
+    - Contact details (name, phone, email)
+    - Property details (address, type, bedrooms, bathrooms)
+    - Property features (square feet, year built, condition)
+    - Selling motivation and timeline
+    - Estimated value
+    
+    Important: Never discuss commission rates. Always refer to an agent for pricing questions.
+    
+    The lead is assigned to a listing specialist and a confirmation is sent.
+    """
+    try:
+        logger.info(f"Creating seller lead: {request.first_name} {request.last_name}")
+        
+        # Validate and format phone
+        try:
+            phone = validate_phone(request.phone)
+        except Exception as e:
+            logger.warning(f"Phone validation failed: {str(e)}")
+            phone = request.phone
+        
+        # Validate email if provided
+        email = None
+        if request.email:
+            try:
+                email = validate_email(request.email)
+            except Exception as e:
+                logger.warning(f"Email validation failed: {str(e)}")
+                email = request.email
+        
+        # Create contact
+        contact = Contact(
+            first_name=request.first_name,
+            last_name=request.last_name,
+            phone=phone,
+            email=email,
+            contact_type=ContactType.SELLER,
+            address=request.property_address,
+            city=request.city,
+            state=request.state,
+            zip_code=request.zip_code,
+            tags=["voice_agent", "seller_lead"],
+            source="voice_agent",
+            notes=request.notes
+        )
+        
+        # Create seller lead
+        seller_lead = SellerLead(
+            contact=contact,
+            property_address=request.property_address,
+            city=request.city,
+            state=request.state,
+            zip_code=request.zip_code,
+            property_type=request.property_type,
+            bedrooms=request.bedrooms,
+            bathrooms=request.bathrooms,
+            square_feet=request.square_feet,
+            year_built=request.year_built,
+            reason_for_selling=request.reason_for_selling,
+            timeframe=request.timeframe,
+            estimated_value=request.estimated_value,
+            status=LeadStatus.NEW
+        )
+        
+        # Save to CRM
+        result = await crm_client.create_seller_lead(seller_lead)
+        lead_id = result.get("id")
+        
+        logger.info(f"Seller lead created successfully: {lead_id}")
+        
+        # Send confirmation SMS
+        try:
+            confirmation_message = (
+                f"Hi {request.first_name}! Thank you for considering Sally Love Real Estate. "
+                f"A listing specialist will contact you shortly to discuss your property at {request.property_address}. "
+                f"We look forward to helping you!"
+            )
+            await twilio_client.send_sms(phone, confirmation_message)
+        except Exception as e:
+            logger.warning(f"Failed to send confirmation SMS: {str(e)}")
+        
+        # Format response message
+        property_details = f"{request.property_address}, {request.city}"
+        
+        message = (
+            f"Thank you, {request.first_name}! I've recorded your information about the property at {property_details}. "
+        )
+        
+        if request.bedrooms and request.bathrooms:
+            message += f"Your {request.bedrooms} bedroom, {request.bathrooms} bathroom property "
+        
+        if request.timeframe:
+            message += f"and your {request.timeframe} timeframe "
+        
+        message += (
+            "has been noted. One of our listing specialists will contact you shortly to discuss "
+            "a market analysis and the next steps. I've sent you a confirmation text. "
+            "Is there anything else you'd like me to note for the agent?"
+        )
+        
+        return VapiResponse(
+            success=True,
+            message=message,
+            data={
+                "lead_id": lead_id,
+                "contact": contact.model_dump(),
+                "property_details": seller_lead.model_dump(exclude={"contact"})
+            }
+        )
+        
+    except BoldTrailError as e:
+        logger.error(f"CRM error in create_seller_lead: {e.message}")
+        return VapiResponse(
+            success=False,
+            error=(
+                "I'm having trouble saving your information right now. "
+                "Let me take your phone number and have a listing specialist call you back."
+            ),
+            message=e.message
+        )
+    
+    except Exception as e:
+        logger.exception(f"Error in create_seller_lead: {str(e)}")
+        return VapiResponse(
+            success=False,
+            error="I encountered an error while saving your information. Let me connect you with an agent directly.",
+            message=str(e)
+        )
+
