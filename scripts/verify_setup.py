@@ -62,7 +62,6 @@ def check_file_structure():
         "src/functions/route_to_agent.py",
         "src/functions/create_buyer_lead.py",
         "src/functions/create_seller_lead.py",
-        "src/functions/schedule_showing.py",
         "src/functions/send_notification.py",
         "src/models/vapi_models.py",
         "src/models/crm_models.py",

@@ -46,14 +46,15 @@ ASSISTANT_CONFIG = {
 4. Collect as much detail as possible (property preferences, timeline, contact info)
 5. If unsure, offer to connect to a live agent
 
-**Available Actions:**
-- Search property listings (Stellar MLS)
+**Available Actions (Phase 1):**
+- Search property listings (BoldTrail/MLS)
 - Get agent information and availability
-- Transfer calls to specific agents
+- Transfer calls to specific agents or escalate to broker
 - Capture buyer leads (preferences, budget, timeline)
 - Capture seller leads (property details, motivation)
-- Schedule property showings
-- Send SMS confirmations
+- Send SMS/email notifications to Sally & Jeff
+
+**Important:** Appointment scheduling is NOT available yet. If someone requests a showing, collect their information as a buyer lead and let them know Sally or an agent will call them directly to arrange a convenient time.
 
 **Conversation Flow:**
 1. Greet warmly and ask how you can help
@@ -181,26 +182,6 @@ Remember: You represent Sally Love Real Estate - be professional, helpful, and n
                 "required": ["first_name", "last_name", "phone", "property_address", "city", "state", "zip_code"]
             },
             "url": f"{settings.WEBHOOK_BASE_URL}/functions/create_seller_lead"
-        },
-        {
-            "name": "schedule_showing",
-            "description": "Schedule a property showing appointment. Collect contact info, property address, and preferred date/time.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "contact_name": {"type": "string", "required": True},
-                    "contact_phone": {"type": "string", "required": True},
-                    "contact_email": {"type": "string"},
-                    "property_address": {"type": "string", "required": True},
-                    "mls_number": {"type": "string"},
-                    "preferred_date": {"type": "string", "description": "Date in YYYY-MM-DD format", "required": True},
-                    "preferred_time": {"type": "string", "description": "Time in HH:MM format", "required": True},
-                    "agent_id": {"type": "string"},
-                    "notes": {"type": "string"}
-                },
-                "required": ["contact_name", "contact_phone", "property_address", "preferred_date", "preferred_time"]
-            },
-            "url": f"{settings.WEBHOOK_BASE_URL}/functions/schedule_showing"
         },
         {
             "name": "send_notification",

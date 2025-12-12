@@ -139,19 +139,6 @@ class CreateSellerLeadRequest(BaseModel):
     notes: Optional[str] = None
 
 
-class ScheduleShowingRequest(BaseModel):
-    """Request model for schedule_showing function"""
-    contact_name: str
-    contact_phone: str
-    contact_email: Optional[str] = None
-    property_address: str
-    mls_number: Optional[str] = None
-    preferred_date: str
-    preferred_time: str
-    agent_id: Optional[str] = None
-    notes: Optional[str] = None
-
-
 class SendNotificationRequest(BaseModel):
     """Request model for send_notification function"""
     recipient_phone: str

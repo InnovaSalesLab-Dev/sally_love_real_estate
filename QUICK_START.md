@@ -44,7 +44,7 @@ tail -f logs/app.log
 
 ---
 
-## 🎯 7 Function Endpoints
+## 🎯 6 Function Endpoints (Phase 1)
 
 | Function | Endpoint | Purpose |
 |----------|----------|---------|
@@ -53,8 +53,9 @@ tail -f logs/app.log
 | route_to_agent | `/functions/route_to_agent` | Transfer call to agent |
 | create_buyer_lead | `/functions/create_buyer_lead` | Capture buyer info |
 | create_seller_lead | `/functions/create_seller_lead` | Capture seller info |
-| schedule_showing | `/functions/schedule_showing` | Book appointments |
 | send_notification | `/functions/send_notification` | Send SMS/email |
+
+_Note: Appointment scheduling will be added in Phase 2._
 
 ---
 
@@ -70,13 +71,12 @@ sally_love_voice_agent/
 │   │   ├── boldtrail.py
 │   │   ├── stellar_mls.py
 │   │   └── twilio_client.py
-│   ├── functions/               # 🛠️ 7 Vapi tools
+│   ├── functions/               # 🛠️ 6 Vapi tools (Phase 1)
 │   │   ├── check_property.py
 │   │   ├── get_agent_info.py
 │   │   ├── route_to_agent.py
 │   │   ├── create_buyer_lead.py
 │   │   ├── create_seller_lead.py
-│   │   ├── schedule_showing.py
 │   │   └── send_notification.py
 │   ├── models/                  # 📋 Data models
 │   ├── webhooks/                # 🔔 Event handlers

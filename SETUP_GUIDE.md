@@ -84,7 +84,7 @@ Server will be available at: `http://localhost:8000`
 python scripts/setup_vapi.py
 ```
 
-This creates the Vapi assistant with all 7 function integrations.
+This creates the Vapi assistant with all 6 Phase 1 function integrations.
 
 ## 📚 API Documentation
 
@@ -93,9 +93,9 @@ Once the server is running:
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
-## 🔧 Available Functions/Tools
+## 🔧 Available Functions/Tools (Phase 1)
 
-The voice agent has 7 functions:
+The voice agent has 6 functions:
 
 1. **check_property** - Search MLS listings
    - Endpoint: `/functions/check_property`
@@ -105,9 +105,9 @@ The voice agent has 7 functions:
    - Endpoint: `/functions/get_agent_info`
    - Use: Find agents by name, specialty, or location
 
-3. **route_to_agent** - Transfer call to agent
+3. **route_to_agent** - Transfer call to agent or broker
    - Endpoint: `/functions/route_to_agent`
-   - Use: Connect caller to specific agent
+   - Use: Connect caller to specific agent or escalate to Jeff
 
 4. **create_buyer_lead** - Capture buyer information
    - Endpoint: `/functions/create_buyer_lead`
@@ -117,13 +117,11 @@ The voice agent has 7 functions:
    - Endpoint: `/functions/create_seller_lead`
    - Use: Record property details for sellers
 
-6. **schedule_showing** - Book appointments
-   - Endpoint: `/functions/schedule_showing`
-   - Use: Schedule property viewings
-
-7. **send_notification** - Send SMS/email
+6. **send_notification** - Send SMS/email
    - Endpoint: `/functions/send_notification`
-   - Use: Send confirmations and reminders
+   - Use: Send confirmations and reminders to Sally & Jeff
+
+**Note:** Appointment scheduling will be added in Phase 2.
 
 ## 🌐 Deployment
 
@@ -324,9 +322,10 @@ Important files to backup:
 
 After setup:
 
-1. ✅ Test all 7 functions with sample data
+1. ✅ Test all 6 functions with sample data
 2. ✅ Make a test call to verify end-to-end flow
 3. ✅ Review transcripts and adjust prompts if needed
+4. ✅ Phase 2: Add appointment scheduling functionality
 4. ✅ Set up monitoring and alerts
 5. ✅ Train team on system capabilities
 6. ✅ Go live! 🚀

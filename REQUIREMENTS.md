@@ -17,9 +17,10 @@ Create an AI-powered voice agent that:
 2. **Qualifies leads** (buyers and sellers)
 3. **Provides property information** from MLS
 4. **Routes calls** to appropriate agents
-5. **Schedules showings** and appointments
-6. **Captures detailed information** for follow-up
-7. **Sends confirmations** via SMS
+5. **Captures detailed information** for follow-up
+6. **Sends confirmations** via SMS
+
+_Note: Appointment scheduling will be added in Phase 2._
 
 ## 👥 User Types
 
@@ -157,21 +158,9 @@ Create an AI-powered voice agent that:
 - Confirmation SMS sent
 - Listing agent assignment
 
-### 6. schedule_showing
-**Purpose**: Book property viewing appointments
+_Note: Appointment scheduling functionality will be added in Phase 2. For now, agents will contact buyers directly to arrange showings._
 
-**Inputs**:
-- Contact information
-- Property address/MLS number
-- Preferred date and time
-- Agent preference
-
-**Outputs**:
-- Appointment ID
-- Confirmation SMS
-- Calendar entry
-
-### 7. send_notification
+### 6. send_notification
 **Purpose**: Send SMS/email confirmations
 
 **Inputs**:
@@ -236,8 +225,8 @@ We'll be in touch shortly. - Sally Love Real Estate
 - Create/update contacts
 - Create buyer/seller leads
 - Assign to agents
-- Schedule appointments
 - Add notes and tags
+- (Appointments in Phase 2)
 
 ### Stellar MLS
 - Property search

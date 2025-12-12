@@ -470,12 +470,11 @@ For Escalations (Jeff):
 - **When:** After collecting seller/property info
 - **Required:** Name, phone, property address, timeline
 
-### 6. schedule_showing
-- **Use:** NOT in Phase 1 - Explain someone will call to arrange
+### 6. send_notification
+- **Use:** Send SMS/email confirmations to Sally & Jeff
+- **When:** After creating any lead or important events
 
-### 7. send_notification
-- **Use:** Send SMS/email confirmations
-- **When:** After creating any lead
+**Note:** Appointment scheduling will be added in Phase 2. For now, inform buyers that Sally or an agent will call them directly to arrange showings.
 
 ---
 

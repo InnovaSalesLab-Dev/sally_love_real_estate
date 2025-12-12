@@ -85,7 +85,6 @@ sally_love_voice_agent/
 │   │   ├── route_to_agent.py
 │   │   ├── create_buyer_lead.py
 │   │   ├── create_seller_lead.py
-│   │   ├── schedule_showing.py
 │   │   └── send_notification.py
 │   ├── models/              # Pydantic models
 │   │   ├── __init__.py
@@ -118,15 +117,16 @@ sally_love_voice_agent/
 └── README.md
 ```
 
-## 🔧 Available Functions/Tools
+## 🔧 Available Functions/Tools (Phase 1)
 
-1. **check_property** - Search and retrieve property details from Stellar MLS
+1. **check_property** - Search and retrieve property details from BoldTrail/MLS
 2. **get_agent_info** - Get agent availability and contact information
-3. **route_to_agent** - Transfer call to specific agent
+3. **route_to_agent** - Transfer call to specific agent or escalate to broker
 4. **create_buyer_lead** - Capture buyer information and preferences
 5. **create_seller_lead** - Capture seller property information
-6. **schedule_showing** - Schedule property showings
-7. **send_notification** - Send SMS/email notifications
+6. **send_notification** - Send SMS/email notifications to Sally & Jeff
+
+**Note:** Appointment scheduling will be added in Phase 2. For now, agents will contact buyers to arrange showings.
 
 ## 📚 API Documentation
 

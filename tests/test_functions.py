@@ -85,22 +85,6 @@ def test_create_seller_lead_endpoint():
     assert "success" in data
 
 
-def test_schedule_showing_endpoint():
-    """Test schedule_showing function endpoint"""
-    payload = {
-        "contact_name": "Bob Johnson",
-        "contact_phone": "+1234567890",
-        "property_address": "456 Oak Ave, Ocala, FL",
-        "preferred_date": "2025-01-15",
-        "preferred_time": "14:00"
-    }
-    
-    response = client.post("/functions/schedule_showing", json=payload)
-    assert response.status_code == 200
-    data = response.json()
-    assert "success" in data
-
-
 def test_route_to_agent_endpoint():
     """Test route_to_agent function endpoint"""
     payload = {

@@ -19,7 +19,6 @@ from src.functions.get_agent_info import router as get_agent_info_router
 from src.functions.route_to_agent import router as route_to_agent_router
 from src.functions.create_buyer_lead import router as create_buyer_lead_router
 from src.functions.create_seller_lead import router as create_seller_lead_router
-from src.functions.schedule_showing import router as schedule_showing_router
 from src.functions.send_notification import router as send_notification_router
 
 # Import webhook handlers
@@ -139,7 +138,6 @@ app.include_router(get_agent_info_router, prefix="/functions", tags=["Functions"
 app.include_router(route_to_agent_router, prefix="/functions", tags=["Functions"])
 app.include_router(create_buyer_lead_router, prefix="/functions", tags=["Functions"])
 app.include_router(create_seller_lead_router, prefix="/functions", tags=["Functions"])
-app.include_router(schedule_showing_router, prefix="/functions", tags=["Functions"])
 app.include_router(send_notification_router, prefix="/functions", tags=["Functions"])
 
 # Include webhook routers

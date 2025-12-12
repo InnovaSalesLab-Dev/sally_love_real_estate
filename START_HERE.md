@@ -4,7 +4,7 @@
 
 A **complete Python FastAPI voice agent system** for Sally Love Real Estate with:
 
-✅ **7 Function Tools** (check property, get agent info, route calls, create leads, schedule showings, send notifications)  
+✅ **6 Function Tools** (check property, get agent info, route calls, create leads, send notifications - Phase 1)  
 ✅ **4 Integrations** (Vapi.ai, BoldTrail CRM, Stellar MLS, Twilio)  
 ✅ **Full Project Structure** (main.py, src/, scripts/, tests/)  
 ✅ **Setup Scripts** (verify, test, deploy)  
@@ -76,13 +76,12 @@ Add them to `.env` file (copy from `.env.example`)
 ```
 main.py                    ← START HERE (entry point)
 │
-├── src/functions/         ← 7 Vapi tools (one file per tool)
+├── src/functions/         ← 6 Vapi tools (Phase 1)
 │   ├── check_property.py
 │   ├── get_agent_info.py
 │   ├── route_to_agent.py
 │   ├── create_buyer_lead.py
 │   ├── create_seller_lead.py
-│   ├── schedule_showing.py
 │   └── send_notification.py
 │
 ├── src/integrations/      ← API clients
@@ -113,7 +112,7 @@ Voice Call → Vapi.ai → Your FastAPI Functions → CRM/MLS/Twilio
 
 ---
 
-## 🛠️ The 7 Functions
+## 🛠️ The 6 Functions (Phase 1)
 
 Each function is a separate Python file in `src/functions/`:
 
@@ -124,8 +123,7 @@ Each function is a separate Python file in `src/functions/`:
 | 3 | route_to_agent | `route_to_agent.py` | Transfer to agent |
 | 4 | create_buyer_lead | `create_buyer_lead.py` | Capture buyer |
 | 5 | create_seller_lead | `create_seller_lead.py` | Capture seller |
-| 6 | schedule_showing | `schedule_showing.py` | Book showing |
-| 7 | send_notification | `send_notification.py` | Send SMS/email |
+| 6 | send_notification | `send_notification.py` | Send SMS/email |
 
 Each function:
 - ✅ Has its own FastAPI router
@@ -215,9 +213,11 @@ curl -X POST http://localhost:8000/functions/check_property \
 
 ## 🎉 You're Ready!
 
-Everything is set up following the HVAC project pattern you know. The structure is familiar, the code is documented, and you have all 7 functions ready to go.
+Everything is set up following the HVAC project pattern you know. The structure is familiar, the code is documented, and you have all 6 Phase 1 functions ready to go.
 
 **Happy coding! 🚀**
+
+_Note: Appointment scheduling (Phase 2) will be added after initial testing._
 
 ---
 
