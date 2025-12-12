@@ -23,6 +23,7 @@ class BoldTrailClient:
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
         }
     
     async def _make_request(
@@ -243,7 +244,7 @@ class BoldTrailClient:
         available: bool = True,
     ) -> List[Dict[str, Any]]:
         """
-        Get list of agents
+        Get list of agents (users in BoldTrail)
         
         Args:
             specialty: Agent specialty filter
@@ -253,26 +254,26 @@ class BoldTrailClient:
         Returns:
             List of agents
         """
-        params = {"available": available}
+        params = {}
         if specialty:
-            params["specialty"] = specialty
+            params["filter[specialty]"] = specialty
         if city:
-            params["city"] = city
+            params["filter[city]"] = city
         
-        result = await self._make_request("GET", "agents", params=params)
-        return result.get("agents", []) if isinstance(result, dict) else []
+        result = await self._make_request("GET", "users", params=params)
+        return result.get("data", []) if isinstance(result, dict) else []
     
     async def get_agent(self, agent_id: str) -> Dict[str, Any]:
         """
-        Get agent by ID
+        Get agent by ID (user in BoldTrail)
         
         Args:
-            agent_id: Agent ID
+            agent_id: Agent/User ID
             
         Returns:
             Agent data
         """
-        return await self._make_request("GET", f"agents/{agent_id}")
+        return await self._make_request("GET", f"users/{agent_id}")
     
     async def create_appointment(self, appointment: Appointment) -> Dict[str, Any]:
         """

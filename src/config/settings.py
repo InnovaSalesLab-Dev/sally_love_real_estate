@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     
     # BoldTrail CRM Configuration
     BOLDTRAIL_API_KEY: str = ""
-    BOLDTRAIL_API_URL: str = "https://api.boldtrail.com/v1"
+    BOLDTRAIL_API_URL: str = "https://api.kvcore.com/v2/public"
     BOLDTRAIL_ACCOUNT_ID: str = ""
     
     # Stellar MLS Configuration
