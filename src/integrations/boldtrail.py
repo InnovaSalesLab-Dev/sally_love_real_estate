@@ -321,4 +321,3 @@ class BoldTrailClient:
         """
         logger.info(f"Updating contact: {contact_id}")
         return await self._make_request("PATCH", f"contacts/{contact_id}", data=updates)
-
