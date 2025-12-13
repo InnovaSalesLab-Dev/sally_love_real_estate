@@ -53,7 +53,7 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
                 logger.warning(f"Email validation failed: {str(e)}")
                 email = request.email
         
-        # Create contact
+        # Create contact object
         contact = Contact(
             first_name=request.first_name,
             last_name=request.last_name,
@@ -61,11 +61,11 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
             email=email,
             contact_type=ContactType.BUYER,
             tags=["voice_agent", "buyer_lead"],
-            source="voice_agent",
+            source="AI Concierge",
             notes=request.notes
         )
         
-        # Create buyer lead
+        # Create buyer lead with all information
         buyer_lead = BuyerLead(
             contact=contact,
             property_type=request.property_type,
@@ -79,11 +79,11 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
             status=LeadStatus.NEW
         )
         
-        # Save to CRM
+        # Save to CRM (creates contact with buyer lead info in one call)
         result = await crm_client.create_buyer_lead(buyer_lead)
-        lead_id = result.get("id")
+        contact_id = result.get("id")
         
-        logger.info(f"Buyer lead created successfully: {lead_id}")
+        logger.info(f"Buyer lead created successfully: {contact_id}")
         
         # Send confirmation SMS
         try:
@@ -123,7 +123,7 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
             success=True,
             message=message,
             data={
-                "lead_id": lead_id,
+                "contact_id": contact_id,
                 "contact": contact.model_dump(),
                 "preferences": buyer_lead.model_dump(exclude={"contact"})
             }

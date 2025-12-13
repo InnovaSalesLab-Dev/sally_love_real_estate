@@ -154,88 +154,124 @@ class BoldTrailClient:
     
     async def create_buyer_lead(self, buyer_lead: BuyerLead) -> Dict[str, Any]:
         """
-        Create a buyer lead in CRM
+        Create a buyer lead in CRM using BoldTrail contact endpoint
+        
+        BoldTrail doesn't have a separate /leads endpoint. Instead, leads are contacts
+        with lead_type set to "Buyer" and preferences stored in notes.
+        
+        Reference: https://developer.insiderealestate.com/publicv2/reference/post_v2-public-contact
         
         Args:
             buyer_lead: Buyer lead data
             
         Returns:
-            Created lead with ID
+            Created contact with ID
         """
         logger.info(f"Creating buyer lead: {buyer_lead.contact.first_name} {buyer_lead.contact.last_name}")
         
-        # First create or get contact
-        contact_data = await self.create_contact(buyer_lead.contact)
-        contact_id = contact_data.get("id")
+        # Build buyer preferences summary for notes
+        preferences = []
+        if buyer_lead.property_type:
+            preferences.append(f"Property Type: {buyer_lead.property_type}")
+        if buyer_lead.location_preference:
+            preferences.append(f"Location: {buyer_lead.location_preference}")
+        if buyer_lead.min_price or buyer_lead.max_price:
+            price_range = f"${buyer_lead.min_price or 0:,.0f} - ${buyer_lead.max_price or 0:,.0f}"
+            preferences.append(f"Budget: {price_range}")
+        if buyer_lead.bedrooms:
+            preferences.append(f"Bedrooms: {buyer_lead.bedrooms}+")
+        if buyer_lead.bathrooms:
+            preferences.append(f"Bathrooms: {buyer_lead.bathrooms}+")
+        if buyer_lead.timeframe:
+            preferences.append(f"Timeframe: {buyer_lead.timeframe}")
+        if buyer_lead.pre_approved:
+            preferences.append("Pre-approved: Yes")
         
-        # Create lead
+        notes = "Buyer Lead from AI Concierge\n" + "\n".join(preferences)
+        if buyer_lead.contact.notes:
+            notes += f"\n\nAdditional Notes: {buyer_lead.contact.notes}"
+        
+        # Create contact with buyer lead information
         payload = {
-            "contactId": contact_id,
-            "type": "buyer",
-            "propertyType": buyer_lead.property_type,
-            "locationPreference": buyer_lead.location_preference,
-            "minPrice": buyer_lead.min_price,
-            "maxPrice": buyer_lead.max_price,
-            "bedrooms": buyer_lead.bedrooms,
-            "bathrooms": buyer_lead.bathrooms,
-            "squareFeetMin": buyer_lead.square_feet_min,
-            "squareFeetMax": buyer_lead.square_feet_max,
-            "timeframe": buyer_lead.timeframe,
-            "preApproved": buyer_lead.pre_approved,
-            "lenderName": buyer_lead.lender_name,
-            "mustHaves": buyer_lead.must_haves,
-            "niceToHaves": buyer_lead.nice_to_haves,
+            "firstName": buyer_lead.contact.first_name,
+            "lastName": buyer_lead.contact.last_name,
+            "phone": buyer_lead.contact.phone,
+            "email": buyer_lead.contact.email,
+            "leadType": "Buyer",  # BoldTrail standard field
             "status": buyer_lead.status.value,
-            "assignedAgentId": buyer_lead.assigned_agent_id,
+            "tags": buyer_lead.contact.tags or ["voice_agent", "buyer_lead"],
+            "source": buyer_lead.contact.source or "AI Concierge",
+            "notes": notes
         }
         
+        # Remove None values
         payload = {k: v for k, v in payload.items() if v is not None}
         
-        return await self._make_request("POST", "leads", data=payload)
+        return await self._make_request("POST", "contact", data=payload)
     
     async def create_seller_lead(self, seller_lead: SellerLead) -> Dict[str, Any]:
         """
-        Create a seller lead in CRM
+        Create a seller lead in CRM using BoldTrail contact endpoint
+        
+        BoldTrail doesn't have a separate /leads endpoint. Instead, leads are contacts
+        with lead_type set to "Seller" and property details stored in notes.
+        
+        Reference: https://developer.insiderealestate.com/publicv2/reference/post_v2-public-contact
         
         Args:
             seller_lead: Seller lead data
             
         Returns:
-            Created lead with ID
+            Created contact with ID
         """
         logger.info(f"Creating seller lead: {seller_lead.contact.first_name} {seller_lead.contact.last_name}")
         
-        # First create or get contact
-        contact_data = await self.create_contact(seller_lead.contact)
-        contact_id = contact_data.get("id")
+        # Build property details summary for notes
+        property_details = []
+        property_details.append(f"Property Address: {seller_lead.property_address}")
+        property_details.append(f"City: {seller_lead.city}, {seller_lead.state} {seller_lead.zip_code}")
+        if seller_lead.property_type:
+            property_details.append(f"Property Type: {seller_lead.property_type}")
+        if seller_lead.bedrooms:
+            property_details.append(f"Bedrooms: {seller_lead.bedrooms}")
+        if seller_lead.bathrooms:
+            property_details.append(f"Bathrooms: {seller_lead.bathrooms}")
+        if seller_lead.square_feet:
+            property_details.append(f"Square Feet: {seller_lead.square_feet:,}")
+        if seller_lead.year_built:
+            property_details.append(f"Year Built: {seller_lead.year_built}")
+        if seller_lead.estimated_value:
+            property_details.append(f"Estimated Value: ${seller_lead.estimated_value:,.0f}")
+        if seller_lead.reason_for_selling:
+            property_details.append(f"Reason for Selling: {seller_lead.reason_for_selling}")
+        if seller_lead.timeframe:
+            property_details.append(f"Timeframe: {seller_lead.timeframe}")
         
-        # Create lead
+        notes = "Seller Lead from AI Concierge\n" + "\n".join(property_details)
+        if seller_lead.contact.notes:
+            notes += f"\n\nAdditional Notes: {seller_lead.contact.notes}"
+        
+        # Create contact with seller lead information
         payload = {
-            "contactId": contact_id,
-            "type": "seller",
-            "propertyAddress": seller_lead.property_address,
+            "firstName": seller_lead.contact.first_name,
+            "lastName": seller_lead.contact.last_name,
+            "phone": seller_lead.contact.phone,
+            "email": seller_lead.contact.email,
+            "address": seller_lead.property_address,
             "city": seller_lead.city,
             "state": seller_lead.state,
             "zipCode": seller_lead.zip_code,
-            "propertyType": seller_lead.property_type,
-            "bedrooms": seller_lead.bedrooms,
-            "bathrooms": seller_lead.bathrooms,
-            "squareFeet": seller_lead.square_feet,
-            "lotSize": seller_lead.lot_size,
-            "yearBuilt": seller_lead.year_built,
-            "condition": seller_lead.condition,
-            "reasonForSelling": seller_lead.reason_for_selling,
-            "timeframe": seller_lead.timeframe,
-            "estimatedValue": seller_lead.estimated_value,
-            "mortgageBalance": seller_lead.mortgage_balance,
-            "improvements": seller_lead.improvements,
+            "leadType": "Seller",  # BoldTrail standard field
             "status": seller_lead.status.value,
-            "assignedAgentId": seller_lead.assigned_agent_id,
+            "tags": seller_lead.contact.tags or ["voice_agent", "seller_lead"],
+            "source": seller_lead.contact.source or "AI Concierge",
+            "notes": notes
         }
         
+        # Remove None values
         payload = {k: v for k, v in payload.items() if v is not None}
         
-        return await self._make_request("POST", "leads", data=payload)
+        return await self._make_request("POST", "contact", data=payload)
     
     async def get_agents(
         self,
@@ -321,6 +357,70 @@ class BoldTrailClient:
         """
         logger.info(f"Updating contact: {contact_id}")
         return await self._make_request("PATCH", f"contacts/{contact_id}", data=updates)
+    
+    async def add_note(
+        self,
+        contact_id: str,
+        note: str,
+        subject: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Add a note to a contact
+        
+        Reference: https://developer.insiderealestate.com/publicv2/reference/put_v2-public-contact-contact-id-action-note
+        
+        Args:
+            contact_id: Contact ID
+            note: Note content
+            subject: Note subject/title (optional)
+            
+        Returns:
+            Created note data
+        """
+        logger.info(f"Adding note to contact: {contact_id}")
+        
+        payload = {"note": note}
+        if subject:
+            payload["subject"] = subject
+        
+        return await self._make_request("PUT", f"contact/{contact_id}/action/note", data=payload)
+    
+    async def log_call(
+        self,
+        contact_id: str,
+        call_type: str = "Inbound",
+        subject: Optional[str] = None,
+        duration: Optional[int] = None,
+        notes: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Log a call activity to a contact
+        
+        Reference: https://developer.insiderealestate.com/publicv2/reference/put_v2-public-contact-contact-id-action-call
+        
+        Args:
+            contact_id: Contact ID
+            call_type: Type of call (Inbound, Outbound, Missed)
+            subject: Call subject/title
+            duration: Call duration in seconds
+            notes: Call notes
+            
+        Returns:
+            Created call log data
+        """
+        logger.info(f"Logging call for contact: {contact_id}")
+        
+        payload = {
+            "type": call_type,
+            "subject": subject or "AI Concierge Call",
+            "duration": duration,
+            "notes": notes
+        }
+        
+        # Remove None values
+        payload = {k: v for k, v in payload.items() if v is not None}
+        
+        return await self._make_request("PUT", f"contact/{contact_id}/action/call", data=payload)
     
     async def get_manual_listings(
         self,

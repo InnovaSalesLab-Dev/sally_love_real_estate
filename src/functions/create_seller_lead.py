@@ -55,7 +55,7 @@ async def create_seller_lead(request: CreateSellerLeadRequest) -> VapiResponse:
                 logger.warning(f"Email validation failed: {str(e)}")
                 email = request.email
         
-        # Create contact
+        # Create contact object
         contact = Contact(
             first_name=request.first_name,
             last_name=request.last_name,
@@ -67,11 +67,11 @@ async def create_seller_lead(request: CreateSellerLeadRequest) -> VapiResponse:
             state=request.state,
             zip_code=request.zip_code,
             tags=["voice_agent", "seller_lead"],
-            source="voice_agent",
+            source="AI Concierge",
             notes=request.notes
         )
         
-        # Create seller lead
+        # Create seller lead with all information
         seller_lead = SellerLead(
             contact=contact,
             property_address=request.property_address,
@@ -89,11 +89,11 @@ async def create_seller_lead(request: CreateSellerLeadRequest) -> VapiResponse:
             status=LeadStatus.NEW
         )
         
-        # Save to CRM
+        # Save to CRM (creates contact with seller lead info in one call)
         result = await crm_client.create_seller_lead(seller_lead)
-        lead_id = result.get("id")
+        contact_id = result.get("id")
         
-        logger.info(f"Seller lead created successfully: {lead_id}")
+        logger.info(f"Seller lead created successfully: {contact_id}")
         
         # Send confirmation SMS
         try:
@@ -129,7 +129,7 @@ async def create_seller_lead(request: CreateSellerLeadRequest) -> VapiResponse:
             success=True,
             message=message,
             data={
-                "lead_id": lead_id,
+                "contact_id": contact_id,
                 "contact": contact.model_dump(),
                 "property_details": seller_lead.model_dump(exclude={"contact"})
             }
