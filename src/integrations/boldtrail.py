@@ -110,7 +110,7 @@ class BoldTrailClient:
         # Remove None values
         payload = {k: v for k, v in payload.items() if v is not None}
         
-        return await self._make_request("POST", "contacts", data=payload)
+        return await self._make_request("POST", "contact", data=payload)
     
     async def get_contact(self, contact_id: str) -> Dict[str, Any]:
         """
@@ -275,6 +275,7 @@ class BoldTrailClient:
     
     async def get_agents(
         self,
+        name: Optional[str] = None,
         specialty: Optional[str] = None,
         city: Optional[str] = None,
         available: bool = True,
@@ -282,7 +283,10 @@ class BoldTrailClient:
         """
         Get list of agents (users in BoldTrail)
         
+        Reference: https://developer.insiderealestate.com/publicv2/reference/get_v2-public-users
+        
         Args:
+            name: Agent name search
             specialty: Agent specialty filter
             city: Service area filter
             available: Filter by availability
@@ -291,10 +295,14 @@ class BoldTrailClient:
             List of agents
         """
         params = {}
+        if name:
+            params["search"] = name  # BoldTrail uses 'search' parameter for name
         if specialty:
             params["filter[specialty]"] = specialty
         if city:
             params["filter[city]"] = city
+        if available:
+            params["filter[status]"] = "active"  # Only return active agents
         
         result = await self._make_request("GET", "users", params=params)
         return result.get("data", []) if isinstance(result, dict) else []
@@ -303,13 +311,16 @@ class BoldTrailClient:
         """
         Get agent by ID (user in BoldTrail)
         
+        Reference: https://developer.insiderealestate.com/publicv2/reference/get_v2-public-user-user-id
+        
         Args:
             agent_id: Agent/User ID
             
         Returns:
             Agent data
         """
-        return await self._make_request("GET", f"users/{agent_id}")
+        result = await self._make_request("GET", f"user/{agent_id}")
+        return result.get("data", result) if isinstance(result, dict) else result
     
     async def create_appointment(self, appointment: Appointment) -> Dict[str, Any]:
         """

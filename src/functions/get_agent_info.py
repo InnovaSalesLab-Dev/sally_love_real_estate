@@ -41,6 +41,7 @@ async def get_agent_info(request: GetAgentInfoRequest) -> VapiResponse:
         else:
             # Search agents by criteria
             agents = await crm_client.get_agents(
+                name=request.agent_name,  # Search by name if provided
                 specialty=request.specialty,
                 city=request.city,
                 available=True
