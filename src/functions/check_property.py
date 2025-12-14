@@ -68,8 +68,8 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
             property_type=request.property_type,
             min_price=request.min_price,
             max_price=request.max_price,
-            min_bedrooms=request.bedrooms,
-            min_bathrooms=request.bathrooms,
+            bedrooms=request.bedrooms,
+            bathrooms=request.bathrooms,
             status="active",  # Only show active/available listings
             limit=5  # Return top 5 matches
         )

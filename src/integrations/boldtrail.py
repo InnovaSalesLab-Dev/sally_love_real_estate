@@ -736,8 +736,8 @@ class BoldTrailClient:
         property_type: Optional[str] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
-        min_bedrooms: Optional[int] = None,
-        min_bathrooms: Optional[float] = None,
+        bedrooms: Optional[int] = None,
+        bathrooms: Optional[float] = None,
         status: Optional[str] = "active",
         limit: int = 5
     ) -> List[Dict[str, Any]]:
@@ -753,8 +753,8 @@ class BoldTrailClient:
             property_type: Property type filter
             min_price: Minimum price
             max_price: Maximum price
-            min_bedrooms: Minimum bedrooms
-            min_bathrooms: Minimum bathrooms
+            bedrooms: Exact number of bedrooms (not minimum)
+            bathrooms: Exact number of bathrooms (not minimum)
             status: Listing status (active, pending, sold, etc.)
             limit: Maximum results to return
             
@@ -805,12 +805,12 @@ class BoldTrailClient:
             if max_price and price > max_price:
                 continue
             
-            # Bedrooms filter
-            if min_bedrooms and listing.get("bedrooms", 0) < min_bedrooms:
+            # Bedrooms filter (exact match)
+            if bedrooms is not None and listing.get("bedrooms", 0) != bedrooms:
                 continue
             
-            # Bathrooms filter
-            if min_bathrooms and listing.get("bathrooms", 0) < min_bathrooms:
+            # Bathrooms filter (exact match)
+            if bathrooms is not None and listing.get("bathrooms", 0) != bathrooms:
                 continue
             
             # Status filter (only show active listings by default)
