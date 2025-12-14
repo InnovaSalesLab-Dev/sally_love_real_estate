@@ -3,6 +3,8 @@ BoldTrail CRM API client
 """
 
 import httpx
+import xml.etree.ElementTree as ET
+import time
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from src.config.settings import settings
@@ -11,6 +13,11 @@ from src.utils.errors import BoldTrailError
 from src.models.crm_models import Contact, BuyerLead, SellerLead, Agent, Appointment
 
 logger = get_logger(__name__)
+
+# Cache for XML listings feed
+_listings_cache: Optional[List[Dict[str, Any]]] = None
+_cache_timestamp: Optional[float] = None
+CACHE_DURATION = 7200  # 2 hours in seconds
 
 
 class BoldTrailClient:
@@ -198,7 +205,7 @@ class BoldTrailClient:
             "phone": buyer_lead.contact.phone,
             "email": buyer_lead.contact.email,
             "leadType": "Buyer",  # BoldTrail standard field
-            "status": buyer_lead.status.value,
+            # Note: status field removed - BoldTrail expects integer, will use default
             "tags": buyer_lead.contact.tags or ["voice_agent", "buyer_lead"],
             "source": buyer_lead.contact.source or "AI Concierge",
             "notes": notes
@@ -262,7 +269,7 @@ class BoldTrailClient:
             "state": seller_lead.state,
             "zipCode": seller_lead.zip_code,
             "leadType": "Seller",  # BoldTrail standard field
-            "status": seller_lead.status.value,
+            # Note: status field removed - BoldTrail expects integer, will use default
             "tags": seller_lead.contact.tags or ["voice_agent", "seller_lead"],
             "source": seller_lead.contact.source or "AI Concierge",
             "notes": notes
@@ -390,7 +397,8 @@ class BoldTrailClient:
         """
         logger.info(f"Adding note to contact: {contact_id}")
         
-        payload = {"note": note}
+        # BoldTrail API requires "details" field, not "note"
+        payload = {"details": note}
         if subject:
             payload["subject"] = subject
         
@@ -531,3 +539,262 @@ class BoldTrailClient:
         logger.info(f"Getting manual listing property types")
         result = await self._make_request("GET", "manuallisting/propertytypes")
         return result.get("data", []) if isinstance(result, dict) else []
+    
+    async def _fetch_xml_listings_feed(self) -> List[Dict[str, Any]]:
+        """
+        Fetch and parse all listings from BoldTrail XML feed
+        
+        This method accesses the full MLS listings feed, not just manual listings.
+        Uses caching to avoid hitting the API on every request.
+        
+        Returns:
+            List of all listings from the XML feed
+        """
+        global _listings_cache, _cache_timestamp
+        
+        current_time = time.time()
+        
+        # Return cached data if still valid
+        if _listings_cache and _cache_timestamp:
+            if (current_time - _cache_timestamp) < CACHE_DURATION:
+                logger.info(f"Returning cached listings ({len(_listings_cache)} listings)")
+                return _listings_cache
+        
+        if not settings.BOLDTRAIL_ZAPIER_KEY:
+            logger.warning("BOLDTRAIL_ZAPIER_KEY not configured, cannot fetch XML feed")
+            return []
+        
+        logger.info("Fetching fresh listings from BoldTrail XML feed")
+        
+        # XML feed URL format: https://api.kvcore.com/export/listings/{ZAPIER_KEY}/10
+        # The /10 means include sold listings from last 10 days
+        url = f"https://api.kvcore.com/export/listings/{settings.BOLDTRAIL_ZAPIER_KEY}/10"
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, timeout=30.0)
+                response.raise_for_status()
+                
+                # Parse XML
+                root = ET.fromstring(response.text)
+                listings = []
+                
+                # Find all listing elements - BoldTrail uses <Listing> with capital L
+                # Try both lowercase and uppercase to be safe
+                for listing_elem in root.findall('.//Listing') + root.findall('.//listing'):
+                    listing = self._extract_listing_from_xml(listing_elem)
+                    if listing:
+                        listings.append(listing)
+                
+                logger.info(f"Fetched {len(listings)} listings from XML feed")
+                
+                # Update cache
+                _listings_cache = listings
+                _cache_timestamp = current_time
+                
+                return listings
+                
+        except httpx.RequestError as e:
+            logger.exception(f"Failed to fetch XML feed: {str(e)}")
+            raise BoldTrailError(
+                message=f"Failed to fetch property listings: {str(e)}",
+                details={"error": str(e)}
+            )
+        except ET.ParseError as e:
+            logger.exception(f"Failed to parse XML feed: {str(e)}")
+            raise BoldTrailError(
+                message=f"Failed to parse property listings: {str(e)}",
+                details={"error": str(e)}
+            )
+    
+    def _extract_listing_from_xml(self, listing_elem: ET.Element) -> Optional[Dict[str, Any]]:
+        """
+        Extract property data from a single listing XML element
+        
+        Args:
+            listing_elem: XML element for one listing
+            
+        Returns:
+            Dictionary with property details or None if invalid
+        """
+        def get_text(path: str, default: str = "") -> str:
+            """Helper to get text from XML element - supports nested paths"""
+            # Try nested path first (e.g., "Location/StreetAddress")
+            if "/" in path:
+                parts = path.split("/")
+                elem = listing_elem
+                for part in parts:
+                    elem = elem.find(part) if elem is not None else None
+                    if elem is None:
+                        break
+                return elem.text if elem is not None and elem.text else default
+            else:
+                # Try direct child
+                elem = listing_elem.find(path)
+                return elem.text if elem is not None and elem.text else default
+        
+        def get_number(path: str, default: float = 0) -> float:
+            """Helper to safely get number from XML element"""
+            try:
+                text = get_text(path, "0")
+                return float(text) if text else default
+            except (ValueError, TypeError):
+                return default
+        
+        # Build listing dictionary - match actual BoldTrail XML structure
+        # XML structure: <Listing><Location><StreetAddress>...</Location><ListingDetails><Price>...</ListingDetails>...
+        listing = {
+            # Basic Info - nested under <Location>
+            "address": get_text("Location/StreetAddress") or get_text("StreetAddress") or get_text("address"),
+            "city": get_text("Location/City") or get_text("City") or get_text("city"),
+            "state": get_text("Location/State") or get_text("State") or get_text("state"),
+            "zip": get_text("Location/Zip") or get_text("Zip") or get_text("zip") or get_text("zipCode"),
+            "zipCode": get_text("Location/Zip") or get_text("Zip") or get_text("zip") or get_text("zipCode"),
+            
+            # Property Details - nested under <ListingDetails>
+            "mlsNumber": get_text("ListingDetails/MlsId") or get_text("MlsId") or get_text("mlsNumber"),
+            "mls_number": get_text("ListingDetails/MlsId") or get_text("MlsId") or get_text("mlsNumber"),
+            "price": get_number("ListingDetails/Price") or get_number("Price") or get_number("price"),
+            "status": get_text("ListingDetails/Status") or get_text("Status") or get_text("status") or "active",
+            "listDate": get_text("ListingDetails/ListedDate") or get_text("ListedDate") or get_text("listDate"),
+            
+            # Property Details - nested under <BasicDetails>
+            "bedrooms": int(get_number("BasicDetails/Bedrooms") or get_number("Bedrooms") or get_number("bedrooms") or 0),
+            "bathrooms": float(get_number("BasicDetails/Bathrooms") or get_number("Bathrooms") or get_number("bathrooms") or 0),
+            "squareFeet": get_number("BasicDetails/SquareFeet") or get_number("SquareFeet") or get_number("squareFeet") or 0,
+            "propertyType": get_text("BasicDetails/PropertyType") or get_text("PropertyType") or get_text("propertyType"),
+            
+            # Description
+            "description": get_text("BasicDetails/Description") or get_text("Description") or get_text("description"),
+            
+            # Agent - nested under <Agent> if present
+            "agentName": get_text("Agent/Name") or get_text("AgentName") or get_text("agentName"),
+            "agentPhone": get_text("Agent/Phone") or get_text("AgentPhone") or get_text("agentPhone"),
+            "agentEmail": get_text("Agent/Email") or get_text("AgentEmail") or get_text("agentEmail"),
+        }
+        
+        # Only return if we have at least an address and price
+        if listing["address"] and listing["price"] > 0:
+            return listing
+        
+        return None
+    
+    def _normalize_address(self, address: str) -> str:
+        """
+        Normalize address for comparison
+        
+        Args:
+            address: Raw address string
+            
+        Returns:
+            Normalized address (lowercase, no punctuation)
+        """
+        return (address.lower()
+                .replace(",", "")
+                .replace(".", "")
+                .replace("street", "st")
+                .replace("avenue", "ave")
+                .replace("boulevard", "blvd")
+                .replace("road", "rd")
+                .replace("drive", "dr")
+                .replace("lane", "ln")
+                .replace("court", "ct")
+                .strip())
+    
+    async def search_listings_from_xml(
+        self,
+        address: Optional[str] = None,
+        city: Optional[str] = None,
+        state: Optional[str] = None,
+        zip_code: Optional[str] = None,
+        mls_number: Optional[str] = None,
+        property_type: Optional[str] = None,
+        min_price: Optional[float] = None,
+        max_price: Optional[float] = None,
+        min_bedrooms: Optional[int] = None,
+        min_bathrooms: Optional[float] = None,
+        status: Optional[str] = "active",
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Search listings from XML feed by various criteria
+        
+        Args:
+            address: Address to search for
+            city: City filter
+            state: State filter
+            zip_code: ZIP code filter
+            mls_number: MLS number filter
+            property_type: Property type filter
+            min_price: Minimum price
+            max_price: Maximum price
+            min_bedrooms: Minimum bedrooms
+            min_bathrooms: Minimum bathrooms
+            status: Listing status (active, pending, sold, etc.)
+            limit: Maximum results to return
+            
+        Returns:
+            List of matching listings
+        """
+        # Fetch all listings from XML feed
+        all_listings = await self._fetch_xml_listings_feed()
+        
+        if not all_listings:
+            return []
+        
+        # Filter listings
+        matches = []
+        
+        for listing in all_listings:
+            # Address filter (normalized partial match)
+            if address:
+                listing_addr = self._normalize_address(listing.get("address", ""))
+                search_addr = self._normalize_address(address)
+                if search_addr not in listing_addr and listing_addr not in search_addr:
+                    continue
+            
+            # City filter (case-insensitive)
+            if city and listing.get("city", "").lower() != city.lower():
+                continue
+            
+            # State filter (case-insensitive)
+            if state and listing.get("state", "").lower() != state.lower():
+                continue
+            
+            # ZIP filter
+            if zip_code and listing.get("zip", "") != zip_code and listing.get("zipCode", "") != zip_code:
+                continue
+            
+            # MLS number filter
+            if mls_number and listing.get("mlsNumber", "") != mls_number and listing.get("mls_number", "") != mls_number:
+                continue
+            
+            # Property type filter (case-insensitive partial match)
+            if property_type and property_type.lower() not in listing.get("propertyType", "").lower():
+                continue
+            
+            # Price filters
+            price = listing.get("price", 0)
+            if min_price and price < min_price:
+                continue
+            if max_price and price > max_price:
+                continue
+            
+            # Bedrooms filter
+            if min_bedrooms and listing.get("bedrooms", 0) < min_bedrooms:
+                continue
+            
+            # Bathrooms filter
+            if min_bathrooms and listing.get("bathrooms", 0) < min_bathrooms:
+                continue
+            
+            # Status filter (only show active listings by default)
+            if status and status.lower() == "active":
+                listing_status = listing.get("status", "").lower()
+                if listing_status not in ["active", "available", ""]:
+                    continue
+            
+            matches.append(listing)
+        
+        # Limit results
+        return matches[:limit]

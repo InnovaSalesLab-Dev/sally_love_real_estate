@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     BOLDTRAIL_API_KEY: str = ""
     BOLDTRAIL_API_URL: str = "https://api.kvcore.com/v2/public"
     BOLDTRAIL_ACCOUNT_ID: str = ""
+    BOLDTRAIL_ZAPIER_KEY: str = ""  # For XML listings feed
     
     # Stellar MLS Configuration
     STELLAR_MLS_USERNAME: str = ""

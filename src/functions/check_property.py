@@ -1,6 +1,7 @@
 """
 Function: Check Property
-Searches and retrieves property details from BoldTrail CRM Manual Listings
+Searches and retrieves property details from BoldTrail CRM MLS Listings Feed
+Uses the XML feed endpoint to access all active MLS listings (not just manual listings)
 """
 
 from fastapi import APIRouter, HTTPException
@@ -19,35 +20,35 @@ crm_client = BoldTrailClient()
 @router.post("/check_property")
 async def check_property(request: CheckPropertyRequest) -> VapiResponse:
     """
-    Search for properties in BoldTrail CRM Manual Listings based on criteria
+    Search for properties in BoldTrail CRM from MLS listings feed based on criteria
     
-    This function allows the voice agent to search for properties by:
+    This function searches the full MLS listings feed (via XML feed) which includes
+    all active listings, not just manually created ones. It allows the voice agent 
+    to search for properties by:
     - Address, city, state, zip code
-    - MLS number (via specific listing lookup)
+    - MLS number
     - Property type, price range, bedrooms, bathrooms
     
     Returns property details including availability, price, and features.
     
-    API Reference: https://developer.insiderealestate.com/publicv2/reference/get_v2-public-manuallistings
+    Uses BoldTrail XML Feed: https://api.kvcore.com/export/listings/{ZAPIER_KEY}/10
     """
     try:
         logger.info(f"Checking property with params: {request.model_dump()}")
         
-        # Search manual listings by criteria
-        # Note: MLS number is passed as a filter, not as a direct lookup
-        # because get_manual_listing() expects BoldTrail's internal listing ID, not MLS number
-        properties = await crm_client.get_manual_listings(
-            property_type=request.property_type,
+        # Search listings from XML feed (includes all MLS listings)
+        properties = await crm_client.search_listings_from_xml(
+            address=request.address,
             city=request.city,
             state=request.state or "FL",
-            address=request.address,
             zip_code=request.zip_code,
             mls_number=request.mls_number,
-            status="active",  # Only show active/available listings
+            property_type=request.property_type,
             min_price=request.min_price,
             max_price=request.max_price,
             min_bedrooms=request.bedrooms,
             min_bathrooms=request.bathrooms,
+            status="active",  # Only show active/available listings
             limit=5  # Return top 5 matches
         )
         
@@ -61,13 +62,18 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
         # Format results for voice response
         if len(properties) == 1:
             prop = properties[0]
+            # Handle both possible field names from XML feed
+            mls_num = prop.get('mlsNumber') or prop.get('mls_number', 'N/A')
+            prop_type = prop.get('propertyType') or prop.get('property_type', 'home')
+            
             message = (
                 f"I found a property at {prop.get('address')}, {prop.get('city')}. "
-                f"It's a {prop.get('bedrooms')} bedroom, {prop.get('bathrooms')} bathroom "
-                f"{prop.get('propertyType', 'home')} listed at ${prop.get('price', 0):,.0f}. "
-                f"The MLS number is {prop.get('mlsNumber')}. "
-                f"Would you like more details about this property?"
+                f"It's a {prop.get('bedrooms', 0)} bedroom, {prop.get('bathrooms', 0)} bathroom "
+                f"{prop_type} listed at ${prop.get('price', 0):,.0f}. "
             )
+            if mls_num and mls_num != 'N/A':
+                message += f"The MLS number is {mls_num}. "
+            message += "Would you like more details about this property?"
         else:
             message = (
                 f"I found {len(properties)} properties matching your criteria. "
