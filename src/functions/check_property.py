@@ -65,6 +65,8 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
             # Handle both possible field names from XML feed
             mls_num = prop.get('mlsNumber') or prop.get('mls_number', 'N/A')
             prop_type = prop.get('propertyType') or prop.get('property_type', 'home')
+            agent_name = prop.get('agentName', '').strip()
+            agent_phone = prop.get('agentPhone', '').strip()
             
             message = (
                 f"I found a property at {prop.get('address')}, {prop.get('city')}. "
@@ -73,7 +75,16 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
             )
             if mls_num and mls_num != 'N/A':
                 message += f"The MLS number is {mls_num}. "
-            message += "Would you like more details about this property?"
+            
+            # Include agent information if available
+            if agent_name:
+                message += f"The listing agent is {agent_name}. "
+                if agent_phone:
+                    message += f"Would you like me to connect you with {agent_name}?"
+                else:
+                    message += "Would you like more details about this property?"
+            else:
+                message += "Would you like more details about this property?"
         else:
             message = (
                 f"I found {len(properties)} properties matching your criteria. "
@@ -82,14 +93,39 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
                 f"Would you like me to tell you about each one?"
             )
         
+        # Include agent and transfer info in response data
+        response_data = {
+            "count": len(properties),
+            "search_params": request.model_dump(exclude_none=True)
+        }
+        
+        # Add agent info for single property result (for transfer capability)
+        if len(properties) == 1:
+            prop = properties[0]
+            if prop.get('agentName'):
+                response_data["listing_agent"] = {
+                    "name": prop.get('agentName', ''),
+                    "phone": prop.get('agentPhone', ''),
+                    "email": prop.get('agentEmail', ''),
+                    "kvcore_id": prop.get('agentKvcoreId', '')
+                }
+                # Add transfer phone if available (for route_to_agent function)
+                if prop.get('agentPhone'):
+                    response_data["transfer_phone"] = prop.get('agentPhone')
+            
+            # Include broker/office info as fallback (Jeff's contact)
+            if prop.get('brokerPhone'):
+                response_data["broker"] = {
+                    "name": prop.get('brokerageName', 'Sally Love Real Estate'),
+                    "phone": prop.get('brokerPhone', ''),
+                    "email": prop.get('brokerEmail', '')
+                }
+        
         return VapiResponse(
             success=True,
             message=message,
             results=properties,
-            data={
-                "count": len(properties),
-                "search_params": request.model_dump(exclude_none=True)
-            }
+            data=response_data
         )
         
     except BoldTrailError as e:

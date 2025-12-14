@@ -667,11 +667,36 @@ class BoldTrailClient:
             # Description
             "description": get_text("BasicDetails/Description") or get_text("Description") or get_text("description"),
             
-            # Agent - nested under <Agent> if present
-            "agentName": get_text("Agent/Name") or get_text("AgentName") or get_text("agentName"),
-            "agentPhone": get_text("Agent/Phone") or get_text("AgentPhone") or get_text("agentPhone"),
-            "agentEmail": get_text("Agent/Email") or get_text("AgentEmail") or get_text("agentEmail"),
+            # Agent - nested under <Agent> element
+            "agentFirstName": get_text("Agent/FirstName") or "",
+            "agentLastName": get_text("Agent/LastName") or "",
+            "agentName": "",  # Will construct below
+            "agentPhone": get_text("Agent/OfficeLineNumber") or get_text("Agent/Phone") or "",
+            "agentEmail": get_text("Agent/EmailAddress") or get_text("Agent/Email") or "",
+            "agentLicense": get_text("Agent/LicenseNum") or "",
+            "agentKvcoreId": get_text("Agent/KvcoreId") or "",
+            "agentKvcoreEmail": get_text("Agent/KvcoreEmail") or "",
+            
+            # Office/Brokerage - nested under <Office> element
+            "brokerageName": get_text("Office/BrokerageName") or "",
+            "brokerPhone": get_text("Office/BrokerPhone") or "",
+            "brokerEmail": get_text("Office/BrokerEmail") or "",
+            "brokerWebsite": get_text("Office/BrokerWebsite") or "",
+            
+            # Co-Agent (optional)
+            "coAgentFirstName": get_text("CoAgent/FirstName") or "",
+            "coAgentLastName": get_text("CoAgent/LastName") or "",
+            "coAgentName": "",  # Will construct below
+            "coAgentPhone": get_text("CoAgent/OfficeLineNumber") or get_text("CoAgent/Phone") or "",
+            "coAgentEmail": get_text("CoAgent/EmailAddress") or get_text("CoAgent/Email") or "",
         }
+        
+        # Construct full agent names
+        if listing["agentFirstName"] or listing["agentLastName"]:
+            listing["agentName"] = f"{listing['agentFirstName']} {listing['agentLastName']}".strip()
+        
+        if listing["coAgentFirstName"] or listing["coAgentLastName"]:
+            listing["coAgentName"] = f"{listing['coAgentFirstName']} {listing['coAgentLastName']}".strip()
         
         # Only return if we have at least an address and price
         if listing["address"] and listing["price"] > 0:
