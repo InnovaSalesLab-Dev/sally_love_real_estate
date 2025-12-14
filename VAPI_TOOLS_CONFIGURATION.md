@@ -54,11 +54,24 @@ Click **"+ Add Property"** and extract:
 | `message` | string | Yes | `$.message` | Voice-friendly message for AI |
 | `count` | integer | No | `$.data.count` | Number of properties found |
 | `properties` | array | No | `$.results` | Array of property listings |
+| `agent_name` | string | No | `$.data.listing_agent.name` | Listing agent name (single property only) |
+| `agent_phone` | string | No | `$.data.listing_agent.phone` | Listing agent phone for transfer |
+| `agent_email` | string | No | `$.data.listing_agent.email` | Listing agent email |
+| `transfer_phone` | string | No | `$.data.transfer_phone` | Direct phone number for call transfer (single property only) |
+| `broker_phone` | string | No | `$.data.broker.phone` | Broker fallback phone (Jeff: 352-399-2010) |
+| `broker_name` | string | No | `$.data.broker.name` | Brokerage name (single property only) |
+
+**Important Notes:**
+- `listing_agent` and `transfer_phone` in `data` are only present when exactly 1 property is found
+- When multiple properties are found, agent data is still available in each property object: `$.results[0].agentName`, `$.results[0].agentPhone`, etc.
+- Use `transfer_phone` or `agent_phone` with `route_to_agent` function for call transfers
+- Use `broker_phone` as fallback if agent unavailable (always 352-399-2010 - Jeff Beatty)
+- Each property in `results[]` includes: `agentName`, `agentPhone`, `agentEmail`, `brokerPhone` fields
 
 ### Description
 
 ```
-Search for properties in BoldTrail CRM by address, city, price range, bedrooms, bathrooms, or MLS number. Use this when caller asks about specific properties or wants to see what's available.
+Search for properties in BoldTrail CRM by address, city, price range, bedrooms, bathrooms, or MLS number. Returns property details including listing agent information for call transfers. Use this when caller asks about specific properties or wants to see what's available. When a single property is found, agent contact information is included for immediate transfer capability.
 ```
 
 ---
@@ -354,16 +367,24 @@ After uploading each tool, verify:
 
 For each tool, use the **"Test"** button with sample data:
 
-### Test check_property:
+### Test check_property (Single Property - with agent data):
 ```json
 {
-  "city": "Ocala",
-  "state": "FL",
-  "min_price": 200000,
-  "max_price": 400000,
-  "bedrooms": 3
+  "address": "1914 HUX COURT",
+  "city": "THE VILLAGES",
+  "state": "FL"
 }
 ```
+**Expected Response:** Includes `data.listing_agent` and `data.transfer_phone` for call transfer
+
+### Test check_property (Multiple Properties):
+```json
+{
+  "city": "THE VILLAGES",
+  "state": "FL"
+}
+```
+**Expected Response:** Multiple properties, no agent data in `data` (agent info in `results[]` array)
 
 ### Test get_agent_info:
 ```json
@@ -440,11 +461,24 @@ All tools return this standard format:
   "message": "Voice-friendly message for AI to speak",
   "data": {
     // Tool-specific data
+    // For check_property with single result: includes listing_agent, transfer_phone, broker
   },
-  "results": [], // For array responses
+  "results": [], // For array responses (properties, agents, etc.)
   "error": "Error message if failed (optional)"
 }
 ```
+
+### check_property Specific Notes:
+
+**Single Property Match:**
+- `data.listing_agent` contains agent info for easy access
+- `data.transfer_phone` provides direct phone for `route_to_agent`
+- `data.broker` contains fallback contact (Jeff)
+
+**Multiple Properties Match:**
+- Agent data is in each property object: `results[0].agentName`, `results[0].agentPhone`, etc.
+- No `data.listing_agent` object (only for single matches)
+- Each property has full agent contact info in the `results[]` array
 
 ---
 

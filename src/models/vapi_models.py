@@ -2,7 +2,7 @@
 Pydantic models for Vapi.ai integration
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, Any, List
 from enum import Enum
 
@@ -71,10 +71,10 @@ class VapiWebhookEvent(BaseModel):
 # Function-specific request models
 
 class CheckPropertyRequest(BaseModel):
-    """Request model for check_property function"""
+    """Request model for check_property function - handles Vapi's empty strings"""
     address: Optional[str] = None
     city: Optional[str] = None
-    state: Optional[str] = None
+    state: Optional[str] = "FL"
     zip_code: Optional[str] = None
     mls_number: Optional[str] = None
     property_type: Optional[str] = None
@@ -82,6 +82,30 @@ class CheckPropertyRequest(BaseModel):
     max_price: Optional[float] = None
     bedrooms: Optional[int] = None
     bathrooms: Optional[float] = None
+    
+    # Convert empty strings to None for numeric fields (Pydantic v2 syntax)
+    @field_validator('min_price', 'max_price', 'bedrooms', 'bathrooms', mode='before')
+    @classmethod
+    def empty_str_to_none(cls, v):
+        """Convert empty strings and whitespace to None before type validation"""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "":
+                return None
+        return v
+    
+    # Strip whitespace from string fields and convert empty strings to None
+    @field_validator('address', 'city', 'state', 'zip_code', 'mls_number', 'property_type', mode='before')
+    @classmethod
+    def strip_strings(cls, v):
+        """Strip whitespace and convert empty strings to None"""
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "":
+                return None
+        return v
 
 
 class GetAgentInfoRequest(BaseModel):
@@ -102,7 +126,7 @@ class RouteToAgentRequest(BaseModel):
 
 
 class CreateBuyerLeadRequest(BaseModel):
-    """Request model for create_buyer_lead function"""
+    """Request model for create_buyer_lead function - handles Vapi's empty strings"""
     first_name: str
     last_name: str
     phone: str
@@ -116,10 +140,34 @@ class CreateBuyerLeadRequest(BaseModel):
     timeframe: Optional[str] = None
     pre_approved: Optional[bool] = None
     notes: Optional[str] = None
+    
+    # Convert empty strings to None for numeric fields
+    @field_validator('min_price', 'max_price', 'bedrooms', 'bathrooms', mode='before')
+    @classmethod
+    def empty_str_to_none(cls, v):
+        """Convert empty strings and whitespace to None before type validation"""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "":
+                return None
+        return v
+    
+    # Strip whitespace from string fields
+    @field_validator('email', 'property_type', 'location_preference', 'timeframe', 'notes', mode='before')
+    @classmethod
+    def strip_strings(cls, v):
+        """Strip whitespace and convert empty strings to None"""
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "":
+                return None
+        return v
 
 
 class CreateSellerLeadRequest(BaseModel):
-    """Request model for create_seller_lead function"""
+    """Request model for create_seller_lead function - handles Vapi's empty strings"""
     first_name: str
     last_name: str
     phone: str
@@ -137,6 +185,30 @@ class CreateSellerLeadRequest(BaseModel):
     timeframe: Optional[str] = None
     estimated_value: Optional[float] = None
     notes: Optional[str] = None
+    
+    # Convert empty strings to None for numeric fields
+    @field_validator('bedrooms', 'bathrooms', 'square_feet', 'year_built', 'estimated_value', mode='before')
+    @classmethod
+    def empty_str_to_none(cls, v):
+        """Convert empty strings and whitespace to None before type validation"""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "":
+                return None
+        return v
+    
+    # Strip whitespace from string fields
+    @field_validator('email', 'property_type', 'reason_for_selling', 'timeframe', 'notes', mode='before')
+    @classmethod
+    def strip_strings(cls, v):
+        """Strip whitespace and convert empty strings to None"""
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "":
+                return None
+        return v
 
 
 class SendNotificationRequest(BaseModel):

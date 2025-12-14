@@ -36,6 +36,28 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
     try:
         logger.info(f"Checking property with params: {request.model_dump()}")
         
+        # Validate that at least one search parameter is provided
+        has_search_criteria = any([
+            request.address,
+            request.city,
+            request.zip_code,
+            request.mls_number,
+            request.property_type,
+            request.min_price,
+            request.max_price,
+            request.bedrooms,
+            request.bathrooms
+        ])
+        
+        if not has_search_criteria:
+            return VapiResponse(
+                success=False,
+                message="I need at least one search criteria to look up properties. Please provide an address, city, ZIP code, MLS number, or property preferences like price range or number of bedrooms.",
+                error="No search criteria provided",
+                results=[],
+                data={"search_params": {}}
+            )
+        
         # Search listings from XML feed (includes all MLS listings)
         properties = await crm_client.search_listings_from_xml(
             address=request.address,
