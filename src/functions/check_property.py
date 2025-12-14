@@ -90,10 +90,18 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
             agent_name = prop.get('agentName', '').strip()
             agent_phone = prop.get('agentPhone', '').strip()
             
+            # Check status and include in message if not active
+            prop_status = prop.get('status', '').lower()
+            status_note = ""
+            if prop_status in ['pending', 'under contract']:
+                status_note = " This property is currently under contract, but they may be accepting backup offers. "
+            elif prop_status == 'sold':
+                status_note = " I should note that this property has been sold. "
+            
             message = (
                 f"I found a property at {prop.get('address')}, {prop.get('city')}. "
                 f"It's a {prop.get('bedrooms', 0)} bedroom, {prop.get('bathrooms', 0)} bathroom "
-                f"{prop_type} listed at ${prop.get('price', 0):,.0f}. "
+                f"{prop_type} listed at ${prop.get('price', 0):,.0f}.{status_note}"
             )
             if mls_num and mls_num != 'N/A':
                 message += f"The MLS number is {mls_num}. "

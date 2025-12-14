@@ -814,10 +814,18 @@ class BoldTrailClient:
                 continue
             
             # Status filter (only show active listings by default)
+            # Exception: If searching by specific address or MLS number, include pending/sold properties too
             if status and status.lower() == "active":
                 listing_status = listing.get("status", "").lower()
-                if listing_status not in ["active", "available", ""]:
-                    continue
+                # If searching by specific address or MLS, be more lenient with status
+                if address or mls_number:
+                    # Include active, pending, and available properties when searching by address/MLS
+                    if listing_status not in ["active", "available", "pending", "sold", ""]:
+                        continue
+                else:
+                    # For general searches, only show active/available
+                    if listing_status not in ["active", "available", ""]:
+                        continue
             
             matches.append(listing)
         
