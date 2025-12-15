@@ -6,7 +6,7 @@ Reference: https://docs.vapi.ai/calls/call-dynamic-transfers
 """
 
 from fastapi import APIRouter, Request
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 import httpx
 import json
 from src.models.vapi_models import VapiResponse
@@ -22,7 +22,7 @@ crm_client = BoldTrailClient()
 
 
 @router.post("/route_to_agent")
-async def route_to_agent(request: Request) -> VapiResponse:
+async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse]:
     """
     Route/transfer call to a specific agent using Vapi's Live Call Control API
     
@@ -71,7 +71,6 @@ async def route_to_agent(request: Request) -> VapiResponse:
             
             # Handle both string (JSON) and dict arguments
             if isinstance(arguments, str):
-                import json
                 try:
                     arguments = json.loads(arguments)
                 except json.JSONDecodeError:
@@ -147,28 +146,17 @@ async def route_to_agent(request: Request) -> VapiResponse:
         
         # Return transfer instruction - Vapi handles the actual transfer
         # Reference: https://docs.vapi.ai/calls/call-dynamic-transfers
+        # IMPORTANT: Vapi expects destination at ROOT LEVEL, not nested in data.transfer
         logger.info(f"Returning transfer instruction for {agent_name} at {agent_phone}")
         
-        return VapiResponse(
-            success=True,
-            message=f"Great! I'm transferring you to {agent_name} now. They'll be able to help you with your {transfer_reason}. Please hold while I connect you.",
-            data={
-                "transfer": {
-                    "type": "transfer",
-                    "destination": {
-                        "type": "number",
-                        "number": agent_phone
-                    },
-                    "content": transfer_message
-                },
-                "agent_id": agent_id,
-                "agent_name": agent_name,
-                "agent_phone": agent_phone,
-                "caller_name": caller_name,
-                "reason": transfer_reason,
-                "verified_in_crm": bool(agent_data)
+        # Return dict with destination at root level (Vapi's expected format)
+        return {
+            "destination": {
+                "type": "number",
+                "number": agent_phone,
+                "message": transfer_message
             }
-        )
+        }
         
     except BoldTrailError as e:
         logger.error(f"BoldTrail error in route_to_agent: {e.message}")
@@ -197,25 +185,14 @@ async def route_to_agent(request: Request) -> VapiResponse:
                     cleaned_phone = ''.join(filter(str.isdigit, agent_phone))
                     agent_phone = f"+1{cleaned_phone}" if len(cleaned_phone) == 10 else f"+{cleaned_phone}"
                 
-                # Return transfer instruction despite CRM error
-                return VapiResponse(
-                    success=True,
-                    message=f"I'll connect you to {agent_name} now. Please hold while I transfer your call.",
-                    data={
-                        "transfer": {
-                            "type": "transfer",
-                            "destination": {
-                                "type": "number",
-                                "number": agent_phone
-                            },
-                            "content": f"Transferring you to {agent_name} now."
-                        },
-                        "agent_name": agent_name,
-                        "agent_phone": agent_phone,
-                        "verified_in_crm": False,
-                        "note": "CRM verification failed but transfer attempted"
+                # Return transfer instruction despite CRM error (destination at root level)
+                return {
+                    "destination": {
+                        "type": "number",
+                        "number": agent_phone,
+                        "message": f"Transferring you to {agent_name} now."
                     }
-                )
+                }
         except Exception as transfer_error:
             logger.error(f"Transfer preparation also failed: {str(transfer_error)}")
         

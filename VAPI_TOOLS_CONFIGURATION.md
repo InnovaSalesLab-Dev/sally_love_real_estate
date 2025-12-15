@@ -139,14 +139,26 @@ Click **"+ Add Property"** and add the following properties:
 
 ### Response Body
 
-Click **"+ Add Property"** and extract:
+**Important:** This function returns a `destination` object at the root level for Vapi's dynamic transfer mechanism. Vapi automatically recognizes this format and executes the transfer - you typically don't need to extract any variables.
+
+**Response Format:**
+```json
+{
+  "destination": {
+    "type": "number",
+    "number": "+1234567890",
+    "message": "Transferring you to Agent Name now. Please hold."
+  }
+}
+```
+
+**If you need to extract variables (optional):**
 
 | Variable | Type | Required | JSON Path | Description |
 |----------|------|----------|-----------|-------------|
-| `success` | boolean | Yes | `$.success` | Whether transfer initiated |
-| `message` | string | Yes | `$.message` | Voice-friendly transfer message |
-| `agent_phone` | string | No | `$.data.agent_phone` | Formatted agent phone for transfer |
-| `verified` | boolean | No | `$.data.verified_in_crm` | Whether agent was verified in CRM |
+| `destination` | object | No | `$.destination` | Transfer destination object (Vapi handles automatically) |
+| `destination_number` | string | No | `$.destination.number` | Phone number to transfer to |
+| `transfer_message` | string | No | `$.destination.message` | Message to play during transfer |
 
 ### Description
 
@@ -428,6 +440,17 @@ For each tool, use the **"Test"** button with sample data:
   "reason": "property inquiry"
 }
 ```
+**Expected Response:**
+```json
+{
+  "destination": {
+    "type": "number",
+    "number": "+13523992010",
+    "message": "Transferring you to Agent Name now. Please hold."
+  }
+}
+```
+**Note:** Vapi automatically recognizes the `destination` object and executes the transfer. The call will be transferred to the number specified.
 
 ### Test send_notification:
 ```json
@@ -453,7 +476,7 @@ For each tool, use the **"Test"** button with sample data:
 
 ## 📊 Response Format (All Tools)
 
-All tools return this standard format:
+**Most tools** return this standard format:
 
 ```json
 {
@@ -467,6 +490,20 @@ All tools return this standard format:
   "error": "Error message if failed (optional)"
 }
 ```
+
+**Exception: `route_to_agent`** returns a special format for Vapi's dynamic transfers:
+
+```json
+{
+  "destination": {
+    "type": "number",
+    "number": "+1234567890",
+    "message": "Transferring you now. Please hold."
+  }
+}
+```
+
+Vapi automatically recognizes the `destination` object and executes the transfer. No variables need to be extracted from this response - Vapi handles it automatically.
 
 ### check_property Specific Notes:
 
