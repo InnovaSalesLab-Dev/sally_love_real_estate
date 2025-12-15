@@ -129,9 +129,9 @@ Remember: You represent Sally Love Real Estate - be professional, helpful, and n
                 },
                 "required": ["agent_id", "agent_name", "agent_phone"]
             },
-            # ⚠️ TEMPORARY: Using test endpoint for testing (uses Hammas Ali's info)
-            # Change back to /functions/route_to_agent before production!
-            "url": f"{settings.WEBHOOK_BASE_URL}/functions/test_route_to_agent"
+            # ✅ Using production endpoint - real transfers will work
+            # For testing: AI will use test agent info (Hammas Ali) from system prompt
+            "url": f"{settings.WEBHOOK_BASE_URL}/functions/route_to_agent"
         },
         {
             "name": "create_buyer_lead",

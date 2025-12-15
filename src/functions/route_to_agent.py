@@ -11,6 +11,7 @@ import httpx
 import json
 from src.models.vapi_models import VapiResponse
 from src.integrations.boldtrail import BoldTrailClient
+from src.config.settings import settings
 from src.utils.logger import get_logger
 from src.utils.errors import BoldTrailError
 
@@ -36,6 +37,13 @@ async def route_to_agent(request: Request) -> VapiResponse:
     try:
         # Parse the request body - Vapi sends webhook format
         body = await request.json()
+        
+        # DEBUG: Log the full webhook payload to see what Vapi is sending
+        logger.info("="*80)
+        logger.info("VAPI WEBHOOK RECEIVED - route_to_agent")
+        logger.info("="*80)
+        logger.info(f"Full payload: {json.dumps(body, indent=2)}")
+        logger.info("="*80)
         
         # Extract control URL from Vapi webhook format
         # Format: message.call.monitor.controlUrl
@@ -76,22 +84,8 @@ async def route_to_agent(request: Request) -> VapiResponse:
             caller_name = arguments.get("caller_name")
             reason = arguments.get("reason")
         
-        logger.info(f"Routing call to agent: {agent_name} ({agent_phone}), controlUrl: {control_url}")
-        
-        if not control_url:
-            logger.warning("No controlUrl provided - transfer cannot be executed via Live Call Control")
-            # Return data-only response if no controlUrl (for testing or non-transfer scenarios)
-            return VapiResponse(
-                success=False,
-                error="Transfer control URL not available",
-                message="I'm unable to transfer the call right now. Let me take your information and have an agent call you back.",
-                data={
-                    "agent_id": agent_id,
-                    "agent_name": agent_name,
-                    "agent_phone": agent_phone,
-                    "note": "controlUrl not available in request"
-                }
-            )
+        logger.info(f"Routing call to agent: {agent_name} ({agent_phone})")
+        logger.info(f"controlUrl present: {bool(control_url)}")
         
         if not agent_phone:
             return VapiResponse(
@@ -138,70 +132,50 @@ async def route_to_agent(request: Request) -> VapiResponse:
                 logger.warning(f"Unexpected phone format: {agent_phone}, using as-is")
                 agent_phone = f"+1{cleaned_phone}"
         
+        # TEST MODE: Override with test number if enabled via TEST_MODE environment variable
+        if settings.TEST_MODE:
+            original_agent = agent_name
+            original_phone = agent_phone
+            agent_name = settings.TEST_AGENT_NAME
+            agent_phone = settings.TEST_AGENT_PHONE
+            logger.info(f"TEST MODE: Overriding transfer from {original_agent} ({original_phone}) to {agent_name} ({agent_phone})")
+        
         # Prepare transfer message
         transfer_reason = reason or "general inquiry"
-        caller_name = caller_name or "a caller"
+        caller_name_display = caller_name or "a caller"
         transfer_message = f"Transferring you to {agent_name} now. Please hold."
         
-        # Execute transfer via Vapi Live Call Control API
+        # Return transfer instruction - Vapi handles the actual transfer
         # Reference: https://docs.vapi.ai/calls/call-dynamic-transfers
-        transfer_payload = {
-            "type": "transfer",
-            "destination": {
-                "type": "number",
-                "number": agent_phone
-            },
-            "content": transfer_message
-        }
+        logger.info(f"Returning transfer instruction for {agent_name} at {agent_phone}")
         
-        logger.info(f"Executing transfer to {agent_phone} via {control_url}/control")
-        
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                transfer_response = await client.post(
-                    f"{control_url}/control",
-                    json=transfer_payload,
-                    headers={"Content-Type": "application/json"}
-                )
-                transfer_response.raise_for_status()
-                logger.info(f"Transfer executed successfully: {transfer_response.status_code}")
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to execute transfer via controlUrl: {str(e)}")
-            return VapiResponse(
-                success=False,
-                error=f"Transfer execution failed: {str(e)}",
-                message="I'm having trouble connecting you right now. Let me take your information and have the agent call you back shortly.",
-                data={
-                    "agent_phone": agent_phone,
-                    "agent_name": agent_name
-                }
-            )
-        
-        # Return success response
         return VapiResponse(
             success=True,
             message=f"Great! I'm transferring you to {agent_name} now. They'll be able to help you with your {transfer_reason}. Please hold while I connect you.",
             data={
+                "transfer": {
+                    "type": "transfer",
+                    "destination": {
+                        "type": "number",
+                        "number": agent_phone
+                    },
+                    "content": transfer_message
+                },
                 "agent_id": agent_id,
                 "agent_name": agent_name,
                 "agent_phone": agent_phone,
                 "caller_name": caller_name,
                 "reason": transfer_reason,
-                "transfer_type": "warm",
-                "verified_in_crm": bool(agent_data),
-                "transfer_executed": True
+                "verified_in_crm": bool(agent_data)
             }
         )
         
     except BoldTrailError as e:
         logger.error(f"BoldTrail error in route_to_agent: {e.message}")
-        # If we have controlUrl, still try to transfer with provided phone
+        # Still attempt transfer with provided phone even if CRM verification fails
         try:
             body = await request.json()
             message = body.get("message", {})
-            call = message.get("call", {})
-            monitor = call.get("monitor", {})
-            control_url = monitor.get("controlUrl")
             
             # Try to get phone from request
             tool_with_tool_call_list = message.get("toolWithToolCallList", [])
@@ -217,34 +191,33 @@ async def route_to_agent(request: Request) -> VapiResponse:
                 agent_phone = params.get("agent_phone", "")
                 agent_name = params.get("agent_name", "an agent")
             
-            if control_url and agent_phone:
+            if agent_phone:
                 # Format phone
                 if not agent_phone.startswith("+"):
                     cleaned_phone = ''.join(filter(str.isdigit, agent_phone))
                     agent_phone = f"+1{cleaned_phone}" if len(cleaned_phone) == 10 else f"+{cleaned_phone}"
                 
-                # Execute transfer despite CRM error
-                transfer_payload = {
-                    "type": "transfer",
-                    "destination": {"type": "number", "number": agent_phone},
-                    "content": f"Transferring you to {agent_name} now. Please hold."
-                }
-                
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    await client.post(f"{control_url}/control", json=transfer_payload)
-                
+                # Return transfer instruction despite CRM error
                 return VapiResponse(
                     success=True,
                     message=f"I'll connect you to {agent_name} now. Please hold while I transfer your call.",
                     data={
+                        "transfer": {
+                            "type": "transfer",
+                            "destination": {
+                                "type": "number",
+                                "number": agent_phone
+                            },
+                            "content": f"Transferring you to {agent_name} now."
+                        },
                         "agent_name": agent_name,
                         "agent_phone": agent_phone,
                         "verified_in_crm": False,
-                        "note": "CRM verification failed but transfer executed"
+                        "note": "CRM verification failed but transfer attempted"
                     }
                 )
         except Exception as transfer_error:
-            logger.error(f"Transfer execution also failed: {str(transfer_error)}")
+            logger.error(f"Transfer preparation also failed: {str(transfer_error)}")
         
         return VapiResponse(
             success=False,
@@ -258,114 +231,5 @@ async def route_to_agent(request: Request) -> VapiResponse:
             success=False,
             error=f"Transfer failed: {str(e)}",
             message="I'm having trouble connecting you right now. Let me take your information and have an agent call you back shortly.",
-        )
-
-
-# ============================================================================
-# TEST ENDPOINT - REMOVE BEFORE PRODUCTION
-# ============================================================================
-# This endpoint simulates a Vapi webhook call for testing route_to_agent
-# Uses test agent information (Hammas Ali) instead of real agents
-# DELETE THIS ENTIRE SECTION BEFORE GOING TO PRODUCTION
-# ============================================================================
-
-@router.post("/test_route_to_agent")
-async def test_route_to_agent(request: Request) -> VapiResponse:
-    """
-    TEST ENDPOINT - Simulates route_to_agent with test data
-    
-    ⚠️ REMOVE THIS ENDPOINT BEFORE PRODUCTION ⚠️
-    
-    This endpoint creates a mock Vapi webhook payload for testing transfers.
-    Uses test agent information (Hammas Ali) instead of real agents.
-    
-    Test Agent Info:
-    - Name: Hammas Ali
-    - Phone: +923035699010
-    
-    To test:
-    POST /functions/test_route_to_agent
-    Body: {
-        "test_agent_name": "Test Agent Name",  // Optional, defaults to "Hammas Ali"
-        "test_agent_phone": "+1234567890",     // Optional, defaults to "+923035699010"
-        "caller_name": "Test Caller",          // Optional
-        "reason": "test transfer"              // Optional
-    }
-    """
-    try:
-        body = await request.json()
-        
-        # Test agent information (Hammas Ali - for testing only)
-        TEST_AGENT_ID = "TEST_AGENT_001"
-        TEST_AGENT_NAME = body.get("test_agent_name", "Hammas Ali")
-        TEST_AGENT_PHONE = body.get("test_agent_phone", "+923035699010")
-        TEST_CALLER_NAME = body.get("caller_name", "Test Caller")
-        TEST_REASON = body.get("reason", "test transfer")
-        
-        # Simulate Vapi webhook format
-        # Note: In real scenario, controlUrl comes from Vapi
-        # For testing, we'll create a mock controlUrl or skip actual transfer
-        MOCK_CONTROL_URL = body.get("mock_control_url")  # Optional: provide mock URL for testing
-        
-        logger.info(f"🧪 TEST MODE: Routing to test agent {TEST_AGENT_NAME} ({TEST_AGENT_PHONE})")
-        logger.warning("⚠️  This is a TEST endpoint using test agent information!")
-        
-        # Format phone number
-        agent_phone = TEST_AGENT_PHONE
-        if not agent_phone.startswith("+"):
-            cleaned_phone = ''.join(filter(str.isdigit, agent_phone))
-            agent_phone = f"+1{cleaned_phone}" if len(cleaned_phone) == 10 else f"+{cleaned_phone}"
-        
-        # If mock_control_url provided, attempt actual transfer (for integration testing)
-        if MOCK_CONTROL_URL:
-            logger.info(f"🧪 TEST: Attempting transfer via mock controlUrl: {MOCK_CONTROL_URL}")
-            
-            transfer_payload = {
-                "type": "transfer",
-                "destination": {
-                    "type": "number",
-                    "number": agent_phone
-                },
-                "content": f"Transferring you to {TEST_AGENT_NAME} now. Please hold."
-            }
-            
-            try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    transfer_response = await client.post(
-                        f"{MOCK_CONTROL_URL}/control",
-                        json=transfer_payload,
-                        headers={"Content-Type": "application/json"}
-                    )
-                    transfer_response.raise_for_status()
-                    logger.info(f"🧪 TEST: Transfer executed successfully: {transfer_response.status_code}")
-            except httpx.HTTPError as e:
-                logger.warning(f"🧪 TEST: Transfer execution failed (expected in test mode): {str(e)}")
-        else:
-            logger.info("🧪 TEST: No mock_control_url provided - skipping actual transfer execution")
-            logger.info("🧪 TEST: In production, Vapi provides controlUrl automatically")
-        
-        # Return success response (simulating successful transfer)
-        return VapiResponse(
-            success=True,
-            message=f"🧪 TEST MODE: Transfer to {TEST_AGENT_NAME} would be executed. In production, the call would be transferred to {agent_phone}.",
-            data={
-                "test_mode": True,
-                "agent_id": TEST_AGENT_ID,
-                "agent_name": TEST_AGENT_NAME,
-                "agent_phone": agent_phone,
-                "caller_name": TEST_CALLER_NAME,
-                "reason": TEST_REASON,
-                "transfer_executed": bool(MOCK_CONTROL_URL),
-                "note": "⚠️ TEST ENDPOINT - Remove before production"
-            }
-        )
-        
-    except Exception as e:
-        logger.exception(f"🧪 TEST: Error in test_route_to_agent: {str(e)}")
-        return VapiResponse(
-            success=False,
-            error=f"Test transfer failed: {str(e)}",
-            message="Test transfer encountered an error.",
-            data={"test_mode": True}
         )
 

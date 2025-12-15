@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     OFFICE_HOURS_END: str = "17:00"
     OFFICE_TIMEZONE: str = "America/New_York"
     
+    # Testing Configuration
+    TEST_MODE: bool = True
+    TEST_AGENT_NAME: str = "Hammas Ali"
+    TEST_AGENT_PHONE: str = "+923035699010"
+    
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/app.log"
