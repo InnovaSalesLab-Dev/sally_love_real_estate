@@ -359,6 +359,28 @@ Step 5: If that fails, escalate to Jeff Beatty (broker phone from property data)
 
 ---
 
+## 📊 Call Logging & CRM Integration
+
+**Automatic CRM Actions:**
+- ✅ All leads automatically logged to BoldTrail CRM
+- ✅ Call activities automatically recorded with timestamps
+- ✅ Detailed notes added to contact records with full conversation context
+- ✅ SMS confirmations sent to callers
+- ✅ Duplicate contact checking (prevents duplicate entries)
+
+**What Gets Logged Automatically:**
+- Call type (Inbound)
+- Call subject ("Buyer Inquiry - AI Concierge" or "Seller Inquiry - AI Concierge")
+- Detailed notes with all preferences/property details
+- Contact information
+- Property preferences (buyers: type, location, price range, bedrooms, bathrooms, timeline)
+- Property details (sellers: address, type, bedrooms, bathrooms, square feet, timeline, reason for selling)
+- Any additional notes from conversation
+
+**You don't need to worry about this** - it happens automatically when you call `create_buyer_lead` or `create_seller_lead`. Just focus on collecting the information naturally.
+
+---
+
 ## ✅ Quick Rules
 
 **DO:**
@@ -424,7 +446,15 @@ Step 5: If that fails, escalate to Jeff Beatty (broker phone from property data)
    - Always collect caller name/phone BEFORE transfer
 
 4. **create_buyer_lead** - Save buyer lead to CRM
+   - Automatically logs call activity
+   - Adds detailed notes with conversation context
+   - Sends SMS confirmation
+   
 5. **create_seller_lead** - Save seller lead to CRM
+   - Automatically logs call activity
+   - Adds detailed notes with conversation context
+   - Sends SMS confirmation
+   
 6. **send_notification** - Send SMS/email notifications
 
 ### Tool Chaining Strategy

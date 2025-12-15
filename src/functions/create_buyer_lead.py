@@ -79,11 +79,62 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
             status=LeadStatus.NEW
         )
         
+        # Check if contact already exists (optional duplicate check)
+        existing_contacts = []
+        try:
+            existing_contacts = await crm_client.search_contacts(phone=phone, email=email)
+            if existing_contacts:
+                logger.info(f"Found existing contact(s) for phone/email: {len(existing_contacts)}")
+        except Exception as e:
+            logger.warning(f"Contact search failed, proceeding with lead creation: {str(e)}")
+        
         # Save to CRM (creates contact with buyer lead info in one call)
         result = await crm_client.create_buyer_lead(buyer_lead)
         contact_id = result.get("id")
         
         logger.info(f"Buyer lead created successfully: {contact_id}")
+        
+        # Log call activity to CRM (required for tracking)
+        try:
+            await crm_client.log_call(
+                contact_id=contact_id,
+                call_type="Inbound",
+                subject="Buyer Inquiry - AI Concierge",
+                notes=f"Initial buyer inquiry call. Looking for {buyer_lead.property_type or 'property'} in {buyer_lead.location_preference or 'The Villages'}. Price range: ${buyer_lead.min_price or 0:,.0f} - ${buyer_lead.max_price or 0:,.0f}."
+            )
+            logger.info(f"Call logged successfully for contact: {contact_id}")
+        except Exception as e:
+            logger.warning(f"Failed to log call activity: {str(e)}")
+        
+        # Add detailed note with conversation context (required for CRM completeness)
+        try:
+            note_content = f"Buyer Lead from AI Voice Agent\n\n"
+            note_content += f"Property Preferences:\n"
+            if buyer_lead.property_type:
+                note_content += f"- Type: {buyer_lead.property_type}\n"
+            if buyer_lead.location_preference:
+                note_content += f"- Location: {buyer_lead.location_preference}\n"
+            if buyer_lead.min_price or buyer_lead.max_price:
+                note_content += f"- Price Range: ${buyer_lead.min_price or 0:,.0f} - ${buyer_lead.max_price or 0:,.0f}\n"
+            if buyer_lead.bedrooms:
+                note_content += f"- Bedrooms: {buyer_lead.bedrooms}+\n"
+            if buyer_lead.bathrooms:
+                note_content += f"- Bathrooms: {buyer_lead.bathrooms}+\n"
+            if buyer_lead.timeframe:
+                note_content += f"- Timeline: {buyer_lead.timeframe}\n"
+            if buyer_lead.pre_approved:
+                note_content += f"- Pre-approved: Yes\n"
+            if request.notes:
+                note_content += f"\nAdditional Notes:\n{request.notes}"
+            
+            await crm_client.add_note(
+                contact_id=contact_id,
+                note=note_content,
+                subject="AI Concierge - Buyer Lead Details"
+            )
+            logger.info(f"Note added successfully for contact: {contact_id}")
+        except Exception as e:
+            logger.warning(f"Failed to add note: {str(e)}")
         
         # Send confirmation SMS
         try:

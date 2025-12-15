@@ -10,7 +10,7 @@ from datetime import datetime
 from src.config.settings import settings
 from src.utils.logger import get_logger
 from src.utils.errors import BoldTrailError
-from src.models.crm_models import Contact, BuyerLead, SellerLead, Agent, Appointment
+from src.models.crm_models import Contact, BuyerLead, SellerLead
 
 logger = get_logger(__name__)
 
@@ -123,13 +123,16 @@ class BoldTrailClient:
         """
         Get contact by ID
         
+        Reference: https://developer.insiderealestate.com/publicv2/reference/get_v2-public-contact-contact-id
+        
         Args:
             contact_id: Contact ID
             
         Returns:
             Contact data
         """
-        return await self._make_request("GET", f"contacts/{contact_id}")
+        result = await self._make_request("GET", f"contact/{contact_id}")
+        return result.get("data", result) if isinstance(result, dict) else result
     
     async def search_contacts(
         self,
@@ -139,6 +142,9 @@ class BoldTrailClient:
     ) -> List[Dict[str, Any]]:
         """
         Search for contacts
+        
+        Reference: https://developer.insiderealestate.com/publicv2/reference/get_v2-public-contacts
+        Uses GET /contacts with query parameters for filtering
         
         Args:
             phone: Phone number
@@ -150,14 +156,14 @@ class BoldTrailClient:
         """
         params = {}
         if phone:
-            params["phone"] = phone
+            params["filter[phone]"] = phone
         if email:
-            params["email"] = email
+            params["filter[email]"] = email
         if name:
-            params["name"] = name
+            params["search"] = name
         
-        result = await self._make_request("GET", "contacts/search", params=params)
-        return result.get("contacts", []) if isinstance(result, dict) else []
+        result = await self._make_request("GET", "contacts", params=params)
+        return result.get("data", []) if isinstance(result, dict) else []
     
     async def create_buyer_lead(self, buyer_lead: BuyerLead) -> Dict[str, Any]:
         """
@@ -329,35 +335,6 @@ class BoldTrailClient:
         result = await self._make_request("GET", f"user/{agent_id}")
         return result.get("data", result) if isinstance(result, dict) else result
     
-    async def create_appointment(self, appointment: Appointment) -> Dict[str, Any]:
-        """
-        Create an appointment
-        
-        Args:
-            appointment: Appointment data
-            
-        Returns:
-            Created appointment with ID
-        """
-        logger.info(f"Creating appointment for contact {appointment.contact_id}")
-        
-        payload = {
-            "contactId": appointment.contact_id,
-            "agentId": appointment.agent_id,
-            "appointmentType": appointment.appointment_type,
-            "date": appointment.date.isoformat(),
-            "durationMinutes": appointment.duration_minutes,
-            "location": appointment.location,
-            "propertyAddress": appointment.property_address,
-            "mlsNumber": appointment.mls_number,
-            "status": appointment.status,
-            "notes": appointment.notes,
-        }
-        
-        payload = {k: v for k, v in payload.items() if v is not None}
-        
-        return await self._make_request("POST", "appointments", data=payload)
-    
     async def update_contact(
         self,
         contact_id: str,
@@ -365,6 +342,8 @@ class BoldTrailClient:
     ) -> Dict[str, Any]:
         """
         Update contact information
+        
+        Reference: https://developer.insiderealestate.com/publicv2/reference/put_v2-public-contact-contact-id
         
         Args:
             contact_id: Contact ID
@@ -374,7 +353,8 @@ class BoldTrailClient:
             Updated contact data
         """
         logger.info(f"Updating contact: {contact_id}")
-        return await self._make_request("PATCH", f"contacts/{contact_id}", data=updates)
+        result = await self._make_request("PUT", f"contact/{contact_id}", data=updates)
+        return result.get("data", result) if isinstance(result, dict) else result
     
     async def add_note(
         self,
@@ -440,105 +420,6 @@ class BoldTrailClient:
         payload = {k: v for k, v in payload.items() if v is not None}
         
         return await self._make_request("PUT", f"contact/{contact_id}/action/call", data=payload)
-    
-    async def get_manual_listings(
-        self,
-        property_type: Optional[str] = None,
-        city: Optional[str] = None,
-        state: Optional[str] = None,
-        address: Optional[str] = None,
-        zip_code: Optional[str] = None,
-        mls_number: Optional[str] = None,
-        status: Optional[str] = "active",
-        min_price: Optional[float] = None,
-        max_price: Optional[float] = None,
-        min_bedrooms: Optional[int] = None,
-        min_bathrooms: Optional[float] = None,
-        limit: int = 10
-    ) -> List[Dict[str, Any]]:
-        """
-        Get manual listings from BoldTrail
-        
-        Reference: https://developer.insiderealestate.com/publicv2/reference/get_v2-public-manuallistings
-        
-        Args:
-            property_type: Property type filter
-            city: City filter
-            state: State filter
-            address: Address filter (partial match)
-            zip_code: ZIP code filter
-            mls_number: MLS number filter
-            status: Listing status filter (default: "active" to only show available properties)
-                   Common values: active, pending, sold, expired
-            min_price: Minimum price
-            max_price: Maximum price
-            min_bedrooms: Minimum bedrooms
-            min_bathrooms: Minimum bathrooms
-            limit: Maximum results to return
-            
-        Returns:
-            List of manual listings (defaults to active listings only)
-        """
-        logger.info(f"Searching manual listings in BoldTrail (status: {status})")
-        
-        params = {}
-        if property_type:
-            params["filter[property_type]"] = property_type
-        if city:
-            params["filter[city]"] = city
-        if state:
-            params["filter[state]"] = state
-        if address:
-            params["filter[address]"] = address
-        if zip_code:
-            params["filter[zip_code]"] = zip_code
-        if mls_number:
-            params["filter[mls_number]"] = mls_number
-        if status:
-            params["filter[status]"] = status
-        if min_price:
-            params["filter[min_price]"] = min_price
-        if max_price:
-            params["filter[max_price]"] = max_price
-        if min_bedrooms:
-            params["filter[bedrooms][gte]"] = min_bedrooms
-        if min_bathrooms:
-            params["filter[bathrooms][gte]"] = min_bathrooms
-        if limit:
-            params["limit"] = limit
-        
-        result = await self._make_request("GET", "manuallistings", params=params)
-        return result.get("data", []) if isinstance(result, dict) else []
-    
-    async def get_manual_listing(self, listing_id: str) -> Dict[str, Any]:
-        """
-        Get specific manual listing by ID
-        
-        Reference: https://developer.insiderealestate.com/publicv2/reference/get_v2-public-manuallisting-manual-listing-id
-        
-        Args:
-            listing_id: Manual listing ID
-            
-        Returns:
-            Manual listing details (extracted from 'data' field for consistency)
-        """
-        logger.info(f"Getting manual listing: {listing_id}")
-        result = await self._make_request("GET", f"manuallisting/{listing_id}")
-        # Extract data field for consistency with get_manual_listings
-        return result.get("data", result) if isinstance(result, dict) else result
-    
-    async def get_manual_listing_property_types(self) -> List[str]:
-        """
-        Get available property types for manual listings
-        
-        Reference: https://developer.insiderealestate.com/publicv2/reference/get_v2-public-manuallisting-propertytypes
-        
-        Returns:
-            List of property types
-        """
-        logger.info(f"Getting manual listing property types")
-        result = await self._make_request("GET", "manuallisting/propertytypes")
-        return result.get("data", []) if isinstance(result, dict) else []
     
     async def _fetch_xml_listings_feed(self) -> List[Dict[str, Any]]:
         """

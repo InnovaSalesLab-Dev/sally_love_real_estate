@@ -89,11 +89,65 @@ async def create_seller_lead(request: CreateSellerLeadRequest) -> VapiResponse:
             status=LeadStatus.NEW
         )
         
+        # Check if contact already exists (optional duplicate check)
+        existing_contacts = []
+        try:
+            existing_contacts = await crm_client.search_contacts(phone=phone, email=email)
+            if existing_contacts:
+                logger.info(f"Found existing contact(s) for phone/email: {len(existing_contacts)}")
+        except Exception as e:
+            logger.warning(f"Contact search failed, proceeding with lead creation: {str(e)}")
+        
         # Save to CRM (creates contact with seller lead info in one call)
         result = await crm_client.create_seller_lead(seller_lead)
         contact_id = result.get("id")
         
         logger.info(f"Seller lead created successfully: {contact_id}")
+        
+        # Log call activity to CRM (required for tracking)
+        try:
+            await crm_client.log_call(
+                contact_id=contact_id,
+                call_type="Inbound",
+                subject="Seller Inquiry - AI Concierge",
+                notes=f"Initial seller inquiry call for property at {seller_lead.property_address}. Timeline: {seller_lead.timeframe or 'Not specified'}."
+            )
+            logger.info(f"Call logged successfully for contact: {contact_id}")
+        except Exception as e:
+            logger.warning(f"Failed to log call activity: {str(e)}")
+        
+        # Add detailed note with conversation context (required for CRM completeness)
+        try:
+            note_content = f"Seller Lead from AI Voice Agent\n\n"
+            note_content += f"Property Details:\n"
+            note_content += f"- Address: {seller_lead.property_address}\n"
+            if seller_lead.property_type:
+                note_content += f"- Type: {seller_lead.property_type}\n"
+            if seller_lead.bedrooms:
+                note_content += f"- Bedrooms: {seller_lead.bedrooms}\n"
+            if seller_lead.bathrooms:
+                note_content += f"- Bathrooms: {seller_lead.bathrooms}\n"
+            if seller_lead.square_feet:
+                note_content += f"- Square Feet: {seller_lead.square_feet:,}\n"
+            if seller_lead.year_built:
+                note_content += f"- Year Built: {seller_lead.year_built}\n"
+            if seller_lead.reason_for_selling:
+                note_content += f"- Reason for Selling: {seller_lead.reason_for_selling}\n"
+            if seller_lead.timeframe:
+                note_content += f"- Timeline: {seller_lead.timeframe}\n"
+            if seller_lead.estimated_value:
+                note_content += f"- Estimated Value: ${seller_lead.estimated_value:,.0f}\n"
+            if request.notes:
+                note_content += f"\nAdditional Notes:\n{request.notes}"
+            
+            await crm_client.add_note(
+                contact_id=contact_id,
+                note=note_content,
+                subject="AI Concierge - Seller Lead Details"
+            )
+            logger.info(f"Note added successfully for contact: {contact_id}")
+        except Exception as e:
+            logger.warning(f"Failed to add note: {str(e)}")
         
         # Send confirmation SMS
         try:
