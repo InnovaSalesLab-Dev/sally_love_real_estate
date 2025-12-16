@@ -154,6 +154,24 @@ class CreateBuyerLeadRequest(BaseModel):
                 return None
         return v
     
+    # Convert empty strings to None for boolean fields
+    @field_validator('pre_approved', mode='before')
+    @classmethod
+    def empty_str_to_none_bool(cls, v):
+        """Convert empty strings and whitespace to None before boolean validation"""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "":
+                return None
+            # Try to convert string booleans to actual booleans
+            if v.lower() in ('true', 'yes', '1'):
+                return True
+            if v.lower() in ('false', 'no', '0'):
+                return False
+        return v
+    
     # Strip whitespace from string fields
     @field_validator('email', 'property_type', 'location_preference', 'timeframe', 'notes', mode='before')
     @classmethod

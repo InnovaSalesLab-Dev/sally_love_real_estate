@@ -5,6 +5,31 @@
 
 ---
 
+## 🔗 ENDPOINTS USED IN THIS PROJECT
+
+The following endpoints are **actively used** in the Sally Love Real Estate AI Concierge project:
+
+| # | Endpoint Name | Method | Path | Reference URL | Used In |
+|---|---------------|--------|------|---------------|---------|
+| 1 | **Create New Contact** | `POST` | `/v2/public/contact` | [Link](https://developer.insiderealestate.com/publicv2/reference/post_v2-public-contact) | `create_buyer_lead()`, `create_seller_lead()` - **Same endpoint, different `deal_type`** |
+| 2 | **Get Contact Details** | `GET` | `/v2/public/contact/{contact-id}` | [Link](https://developer.insiderealestate.com/publicv2/reference/get_v2-public-contact-contact-id) | `get_contact()` |
+| 3 | **Get Contacts List** | `GET` | `/v2/public/contacts` | [Link](https://developer.insiderealestate.com/publicv2/reference/get_v2-public-contacts) | `search_contacts()` |
+| 4 | **Update Contact** | `PUT` | `/v2/public/contact/{contact-id}` | [Link](https://developer.insiderealestate.com/publicv2/reference/put_v2-public-contact-contact-id) | `update_contact()` |
+| 5 | **Add a Note** | `PUT` | `/v2/public/contact/{contact-id}/action/note` | [Link](https://developer.insiderealestate.com/publicv2/reference/put_v2-public-contact-contact-id-action-note) | `add_note()` |
+| 6 | **Log a Call** | `PUT` | `/v2/public/contact/{contact-id}/action/call` | [Link](https://developer.insiderealestate.com/publicv2/reference/put_v2-public-contact-contact-id-action-call) | `log_call()` |
+| 7 | **Get User List** | `GET` | `/v2/public/users` | [Link](https://developer.insiderealestate.com/publicv2/reference/get_v2-public-users) | `get_agents()` |
+| 8 | **Get User Details** | `GET` | `/v2/public/user/{user-id}` | [Link](https://developer.insiderealestate.com/publicv2/reference/get_v2-public-user-user-id) | `get_agent()` |
+
+### Additional Data Source
+
+| Resource | Type | URL Format | Used In |
+|----------|------|------------|---------|
+| **XML Listings Feed** | Data Feed | `https://api.kvcore.com/export/listings/{ZAPIER_KEY}/10` | `search_listings_from_xml()` |
+
+**Note:** The XML listings feed is used for property searches as an alternative to the Manual Listings API endpoint.
+
+---
+
 ## 🎯 SALLY LOVE PROJECT - PRIORITY ENDPOINTS
 
 These are the **essential endpoints** needed for the Sally Love Real Estate AI Concierge project.

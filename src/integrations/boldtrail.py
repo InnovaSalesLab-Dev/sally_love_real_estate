@@ -139,6 +139,8 @@ class BoldTrailClient:
         phone: Optional[str] = None,
         email: Optional[str] = None,
         name: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Search for contacts
@@ -146,21 +148,43 @@ class BoldTrailClient:
         Reference: https://developer.insiderealestate.com/publicv2/reference/get_v2-public-contacts
         Uses GET /contacts with query parameters for filtering
         
+        API Parameters (from official docs):
+        - filter[email] - Search by email (exact or like match)
+        - filter[first_name] - Search by first name (exact or like match)
+        - filter[last_name] - Search by last name (exact or like match)
+        - search - General search parameter (for name)
+        
+        Note: Phone filtering is not available in the API. Use email or name instead.
+        
         Args:
-            phone: Phone number
-            email: Email address
-            name: Contact name
+            phone: Phone number (NOTE: Not supported by API - will be ignored)
+            email: Email address (uses filter[email])
+            name: Contact name (uses search parameter)
+            first_name: First name (uses filter[first_name])
+            last_name: Last name (uses filter[last_name])
             
         Returns:
             List of matching contacts
         """
         params = {}
-        if phone:
-            params["filter[phone]"] = phone
+        
+        # Email filter (documented parameter)
         if email:
             params["filter[email]"] = email
-        if name:
+        
+        # Name filters (documented parameters)
+        if first_name:
+            params["filter[first_name]"] = first_name
+        if last_name:
+            params["filter[last_name]"] = last_name
+        
+        # General search parameter (for name if first/last not provided)
+        if name and not first_name and not last_name:
             params["search"] = name
+        
+        # Phone is not supported by API - log warning if provided
+        if phone:
+            logger.warning(f"Phone search not supported by BoldTrail API. Phone parameter ignored: {phone}")
         
         result = await self._make_request("GET", "contacts", params=params)
         return result.get("data", []) if isinstance(result, dict) else []
@@ -182,45 +206,86 @@ class BoldTrailClient:
         """
         logger.info(f"Creating buyer lead: {buyer_lead.contact.first_name} {buyer_lead.contact.last_name}")
         
-        # Build buyer preferences summary for notes
-        preferences = []
-        if buyer_lead.property_type:
-            preferences.append(f"Property Type: {buyer_lead.property_type}")
-        if buyer_lead.location_preference:
-            preferences.append(f"Location: {buyer_lead.location_preference}")
-        if buyer_lead.min_price or buyer_lead.max_price:
-            price_range = f"${buyer_lead.min_price or 0:,.0f} - ${buyer_lead.max_price or 0:,.0f}"
-            preferences.append(f"Budget: {price_range}")
-        if buyer_lead.bedrooms:
-            preferences.append(f"Bedrooms: {buyer_lead.bedrooms}+")
-        if buyer_lead.bathrooms:
-            preferences.append(f"Bathrooms: {buyer_lead.bathrooms}+")
-        if buyer_lead.timeframe:
-            preferences.append(f"Timeframe: {buyer_lead.timeframe}")
-        if buyer_lead.pre_approved:
-            preferences.append("Pre-approved: Yes")
-        
-        notes = "Buyer Lead from AI Concierge\n" + "\n".join(preferences)
-        if buyer_lead.contact.notes:
-            notes += f"\n\nAdditional Notes: {buyer_lead.contact.notes}"
+        # Note: Buyer preference details (property type, location, price range, etc.) are saved
+        # via separate add_note() endpoint call in create_buyer_lead.py after contact creation.
+        # The POST /v2/public/contact endpoint does not accept a notes field.
         
         # Create contact with buyer lead information
+        # API Documentation: https://developer.insiderealestate.com/publicv2/reference/post_v2-public-contact
+        # Field names are snake_case, not camelCase!
+        
+        # Convert phone to integer (cell_phone_1 expects integer)
+        phone_int = None
+        try:
+            # Remove all non-digit characters and convert to integer
+            phone_digits = ''.join(filter(str.isdigit, buyer_lead.contact.phone))
+            if phone_digits:
+                phone_int = int(phone_digits)
+        except (ValueError, AttributeError):
+            logger.warning(f"Could not convert phone to integer: {buyer_lead.contact.phone}")
+            # If conversion fails, we'll skip it - API may accept it anyway
+        
+        # Build payload with correct field names (snake_case)
+        # Note: email is required by API, but if not provided, we'll use a placeholder
+        email_value = buyer_lead.contact.email
+        if not email_value:
+            # Generate a placeholder email if not provided (API requires email field)
+            # Format: noemail-{timestamp}@sallyloverealestate.ai
+            email_value = f"noemail-{int(time.time())}@sallyloverealestate.ai"
+            logger.warning(f"Email not provided for buyer lead, using placeholder: {email_value}")
+        
         payload = {
-            "firstName": buyer_lead.contact.first_name,
-            "lastName": buyer_lead.contact.last_name,
-            "phone": buyer_lead.contact.phone,
-            "email": buyer_lead.contact.email,
-            "leadType": "Buyer",  # BoldTrail standard field
-            # Note: status field removed - BoldTrail expects integer, will use default
-            "tags": buyer_lead.contact.tags or ["voice_agent", "buyer_lead"],
+            "first_name": buyer_lead.contact.first_name,  # Required
+            "last_name": buyer_lead.contact.last_name or "",  # Required - allow empty string
+            "email": email_value,  # Required by API
+            "deal_type": "buyer",  # String of strings - lowercase
             "source": buyer_lead.contact.source or "AI Concierge",
-            "notes": notes
+            "status": 0,  # 0 = New (required integer enum: 0=New, 1=Client, 2=Closed, 3=Sphere, 4=Active, 5=Contract, 6=Archived, 7=Prospect)
         }
         
-        # Remove None values
-        payload = {k: v for k, v in payload.items() if v is not None}
+        # Add phone if available (integer)
+        if phone_int:
+            payload["cell_phone_1"] = phone_int
         
-        return await self._make_request("POST", "contact", data=payload)
+        # Add address fields if provided (using primary_* prefix)
+        if buyer_lead.contact.address:
+            payload["primary_address"] = buyer_lead.contact.address
+        if buyer_lead.contact.city:
+            payload["primary_city"] = buyer_lead.contact.city
+        if buyer_lead.contact.state:
+            payload["primary_state"] = buyer_lead.contact.state
+        if buyer_lead.contact.zip_code:
+            payload["primary_zip"] = buyer_lead.contact.zip_code
+        
+        # Add capture_method to identify this as an AI voice agent lead
+        payload["capture_method"] = "AI Voice Agent - Concierge"
+        
+        # Log the complete payload for debugging (without sensitive phone/email data)
+        payload_log = {k: ('***' if k in ['cell_phone_1', 'email'] else v) for k, v in payload.items()}
+        logger.info(f"Creating buyer lead - Full payload fields: {list(payload.keys())}")
+        logger.info(f"Creating buyer lead payload (sanitized): {payload_log}")
+        
+        result = await self._make_request("POST", "contact", data=payload)
+        
+        # Log what was actually saved and extract contact ID properly
+        if result and isinstance(result, dict):
+            # Try multiple ways to extract contact ID (API response format may vary)
+            # Try multiple paths independently to handle various API response formats
+            saved_id = result.get("id")
+            if not saved_id and isinstance(result.get("data"), dict):
+                saved_id = result.get("data", {}).get("id")
+            if not saved_id and isinstance(result.get("contact"), dict):
+                saved_id = result.get("contact", {}).get("id")
+            logger.info(f"Buyer lead created successfully with ID: {saved_id}")
+            # Log returned fields to see what API accepted
+            returned_fields = list(result.keys()) if isinstance(result, dict) else []
+            logger.info(f"API response fields: {returned_fields}")
+            
+            # Ensure ID is in result for caller to use
+            if saved_id and "id" not in result:
+                result["id"] = saved_id
+        
+        return result
     
     async def create_seller_lead(self, seller_lead: SellerLead) -> Dict[str, Any]:
         """
@@ -239,52 +304,79 @@ class BoldTrailClient:
         """
         logger.info(f"Creating seller lead: {seller_lead.contact.first_name} {seller_lead.contact.last_name}")
         
-        # Build property details summary for notes
-        property_details = []
-        property_details.append(f"Property Address: {seller_lead.property_address}")
-        property_details.append(f"City: {seller_lead.city}, {seller_lead.state} {seller_lead.zip_code}")
-        if seller_lead.property_type:
-            property_details.append(f"Property Type: {seller_lead.property_type}")
-        if seller_lead.bedrooms:
-            property_details.append(f"Bedrooms: {seller_lead.bedrooms}")
-        if seller_lead.bathrooms:
-            property_details.append(f"Bathrooms: {seller_lead.bathrooms}")
-        if seller_lead.square_feet:
-            property_details.append(f"Square Feet: {seller_lead.square_feet:,}")
-        if seller_lead.year_built:
-            property_details.append(f"Year Built: {seller_lead.year_built}")
-        if seller_lead.estimated_value:
-            property_details.append(f"Estimated Value: ${seller_lead.estimated_value:,.0f}")
-        if seller_lead.reason_for_selling:
-            property_details.append(f"Reason for Selling: {seller_lead.reason_for_selling}")
-        if seller_lead.timeframe:
-            property_details.append(f"Timeframe: {seller_lead.timeframe}")
-        
-        notes = "Seller Lead from AI Concierge\n" + "\n".join(property_details)
-        if seller_lead.contact.notes:
-            notes += f"\n\nAdditional Notes: {seller_lead.contact.notes}"
+        # Note: Property details (address, type, bedrooms, bathrooms, square feet, etc.) are saved
+        # via separate add_note() endpoint call in create_seller_lead.py after contact creation.
+        # The POST /v2/public/contact endpoint does not accept a notes field.
         
         # Create contact with seller lead information
+        # API Documentation: https://developer.insiderealestate.com/publicv2/reference/post_v2-public-contact
+        # Field names are snake_case, not camelCase!
+        
+        # Convert phone to integer (cell_phone_1 expects integer)
+        phone_int = None
+        try:
+            # Remove all non-digit characters and convert to integer
+            phone_digits = ''.join(filter(str.isdigit, seller_lead.contact.phone))
+            if phone_digits:
+                phone_int = int(phone_digits)
+        except (ValueError, AttributeError):
+            logger.warning(f"Could not convert phone to integer: {seller_lead.contact.phone}")
+        
+        # Handle required email field
+        email_value = seller_lead.contact.email
+        if not email_value:
+            # Generate a placeholder email if not provided (API requires email field)
+            email_value = f"noemail-{int(time.time())}@sallyloverealestate.ai"
+            logger.warning(f"Email not provided for seller lead, using placeholder: {email_value}")
+        
+        # Build payload with correct field names (snake_case)
         payload = {
-            "firstName": seller_lead.contact.first_name,
-            "lastName": seller_lead.contact.last_name,
-            "phone": seller_lead.contact.phone,
-            "email": seller_lead.contact.email,
-            "address": seller_lead.property_address,
-            "city": seller_lead.city,
-            "state": seller_lead.state,
-            "zipCode": seller_lead.zip_code,
-            "leadType": "Seller",  # BoldTrail standard field
-            # Note: status field removed - BoldTrail expects integer, will use default
-            "tags": seller_lead.contact.tags or ["voice_agent", "seller_lead"],
+            "first_name": seller_lead.contact.first_name,  # Required
+            "last_name": seller_lead.contact.last_name or "",  # Required
+            "email": email_value,  # Required by API
+            "deal_type": "seller",  # String of strings - lowercase
+            "primary_address": seller_lead.property_address,
+            "primary_city": seller_lead.city,
+            "primary_state": seller_lead.state,
+            "primary_zip": seller_lead.zip_code,
+            "status": 0,  # 0 = New (integer enum)
             "source": seller_lead.contact.source or "AI Concierge",
-            "notes": notes
+            "capture_method": "AI Voice Agent - Concierge",
         }
+        
+        # Add phone if available (integer)
+        if phone_int:
+            payload["cell_phone_1"] = phone_int
         
         # Remove None values
         payload = {k: v for k, v in payload.items() if v is not None}
         
-        return await self._make_request("POST", "contact", data=payload)
+        # Log the complete payload for debugging (without sensitive phone/email data)
+        payload_log = {k: ('***' if k in ['cell_phone_1', 'email'] else v) for k, v in payload.items()}
+        logger.info(f"Creating seller lead - Full payload fields: {list(payload.keys())}")
+        logger.info(f"Creating seller lead payload (sanitized): {payload_log}")
+        
+        result = await self._make_request("POST", "contact", data=payload)
+        
+        # Log what was actually saved and extract contact ID properly
+        if result and isinstance(result, dict):
+            # Try multiple ways to extract contact ID (API response format may vary)
+            # Try multiple paths independently to handle various API response formats
+            saved_id = result.get("id")
+            if not saved_id and isinstance(result.get("data"), dict):
+                saved_id = result.get("data", {}).get("id")
+            if not saved_id and isinstance(result.get("contact"), dict):
+                saved_id = result.get("contact", {}).get("id")
+            logger.info(f"Seller lead created successfully with ID: {saved_id}")
+            # Log returned fields to see what API accepted
+            returned_fields = list(result.keys()) if isinstance(result, dict) else []
+            logger.info(f"API response fields: {returned_fields}")
+            
+            # Ensure ID is in result for caller to use
+            if saved_id and "id" not in result:
+                result["id"] = saved_id
+        
+        return result
     
     async def get_agents(
         self,
@@ -292,33 +384,99 @@ class BoldTrailClient:
         specialty: Optional[str] = None,
         city: Optional[str] = None,
         available: bool = True,
+        status: Optional[int] = None,
+        offices: Optional[List[int]] = None,
+        teams: Optional[List[int]] = None,
+        mls_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Get list of agents (users in BoldTrail)
         
         Reference: https://developer.insiderealestate.com/publicv2/reference/get_v2-public-users
         
+        API Query Parameters (from official docs):
+        - offices[] (integer array): Filter by office IDs
+        - lenders[] (integer array): Filter by lender IDs
+        - teams[] (integer array): Filter by team IDs
+        - since (string, datetime): Filter users updated after date
+        - before (string, datetime): Filter users updated before date
+        - status (integer): 1 = Active, 0 = Roster Only
+        - mls_id (string): Filter by MLS ID(s) - comma-separated for multiple
+        
+        Note: The API does NOT support searching by name, specialty, or city directly.
+        If name/specialty/city are provided, we filter results in code after fetching.
+        
         Args:
-            name: Agent name search
-            specialty: Agent specialty filter
-            city: Service area filter
-            available: Filter by availability
+            name: Agent name (filtered in code, not by API)
+            specialty: Agent specialty (filtered in code, not by API)
+            city: Service area (filtered in code, not by API)
+            available: Filter by availability (uses status=1 if True)
+            status: User status - 1=Active, 0=Roster Only (default: 1 if available=True)
+            offices: List of office IDs to filter by
+            teams: List of team IDs to filter by
+            mls_id: MLS ID(s) to filter by (comma-separated string)
             
         Returns:
-            List of agents
+            List of agents (filtered by name/specialty/city if provided)
         """
         params = {}
-        if name:
-            params["search"] = name  # BoldTrail uses 'search' parameter for name
-        if specialty:
-            params["filter[specialty]"] = specialty
-        if city:
-            params["filter[city]"] = city
-        if available:
-            params["filter[status]"] = "active"  # Only return active agents
         
+        # API-supported filters
+        if status is not None:
+            params["status"] = status
+        elif available:
+            params["status"] = 1  # 1 = Active (default when available=True)
+        
+        if offices:
+            # API expects offices[] as array parameter (multiple values)
+            # httpx will format this as offices[]=1&offices[]=2 when passed as list
+            params["offices[]"] = offices
+        
+        if teams:
+            # API expects teams[] as array parameter (multiple values)
+            # httpx will format this as teams[]=1&teams[]=2 when passed as list
+            params["teams[]"] = teams
+        
+        if mls_id:
+            params["mls_id"] = mls_id
+        
+        # Get agents from API
         result = await self._make_request("GET", "users", params=params)
-        return result.get("data", []) if isinstance(result, dict) else []
+        agents = result.get("data", []) if isinstance(result, dict) else []
+        
+        # Filter by name, specialty, or city in code (API doesn't support these)
+        filtered_agents = agents
+        
+        if name:
+            name_lower = name.lower()
+            filtered_agents = [
+                agent for agent in filtered_agents
+                if name_lower in agent.get("firstName", "").lower() or
+                   name_lower in agent.get("lastName", "").lower() or
+                   name_lower in agent.get("name", "").lower()
+            ]
+            logger.info(f"Filtered {len(agents)} agents to {len(filtered_agents)} by name '{name}'")
+        
+        if specialty and filtered_agents:
+            specialty_lower = specialty.lower()
+            filtered_agents = [
+                agent for agent in filtered_agents
+                if specialty_lower in str(agent.get("specialties", [])).lower() or
+                   specialty_lower in str(agent.get("specialty", "")).lower()
+            ]
+            logger.info(f"Filtered to {len(filtered_agents)} agents by specialty '{specialty}'")
+        
+        if city and filtered_agents:
+            city_lower = city.lower()
+            filtered_agents = [
+                agent for agent in filtered_agents
+                if city_lower in str(agent.get("serviceAreas", [])).lower() or
+                   city_lower in str(agent.get("city", "")).lower() or
+                   city_lower in str(agent.get("serviceArea", "")).lower()
+            ]
+            logger.info(f"Filtered to {len(filtered_agents)} agents by city '{city}'")
+        
+        return filtered_agents
     
     async def get_agent(self, agent_id: str) -> Dict[str, Any]:
         """
@@ -326,12 +484,16 @@ class BoldTrailClient:
         
         Reference: https://developer.insiderealestate.com/publicv2/reference/get_v2-public-user-user-id
         
+        API Parameters:
+        - user_id (integer, required): User ID in URL path: GET /v2/public/user/{user_id}
+        
         Args:
-            agent_id: Agent/User ID
+            agent_id: Agent/User ID (integer as string - will be used in URL path)
             
         Returns:
-            Agent data
+            Agent data (user details from BoldTrail)
         """
+        logger.info(f"Getting agent details for ID: {agent_id}")
         result = await self._make_request("GET", f"user/{agent_id}")
         return result.get("data", result) if isinstance(result, dict) else result
     
@@ -345,14 +507,57 @@ class BoldTrailClient:
         
         Reference: https://developer.insiderealestate.com/publicv2/reference/put_v2-public-contact-contact-id
         
+        API Parameters (from official docs - all optional, use snake_case):
+        - first_name, last_name, email
+        - cell_phone_1 (integer), home_phone (integer), work_phone (integer), fax (string)
+        - deal_type (string of strings: "buyer", "seller", "renter")
+        - primary_address, primary_city, primary_state, primary_zip
+        - status (integer enum: 0=New, 1=Client, 2=Closed, 3=Sphere, 4=Active, 5=Contract, 6=Archived, 7=Prospect)
+        - source, capture_method
+        - email_optin, phone_on, text_on (integers: 0 or 1)
+        - rating (integer: 0-5)
+        - assigned_agent_id, assigned_agent_external_id (strings)
+        - avg_price, avg_beds, avg_baths (integers)
+        - poi_address, poi_city, poi_state, poi_zip (property of interest)
+        - spouse_first_name, spouse_last_name, spouse_phone, spouse_title
+        - title, birthday, gender, second_email
+        - external_vendor_id, active_mls_id
+        - skip_new_notification (boolean)
+        - last_closing_date (string)
+        
+        Note: Field names must be snake_case (e.g., first_name, cell_phone_1, primary_address)
+        Note: Phone fields (cell_phone_1, home_phone, work_phone) must be integers (digits only)
+        
         Args:
-            contact_id: Contact ID
-            updates: Fields to update
+            contact_id: Contact ID (integer, required in URL path)
+            updates: Dictionary of fields to update (use snake_case field names)
             
         Returns:
             Updated contact data
         """
         logger.info(f"Updating contact: {contact_id}")
+        
+        # Convert phone fields to integers if they're strings
+        phone_fields = ["cell_phone_1", "home_phone", "work_phone"]
+        for field in phone_fields:
+            if field in updates and updates[field] is not None:
+                try:
+                    if isinstance(updates[field], str):
+                        # Remove all non-digit characters and convert to integer
+                        phone_digits = ''.join(filter(str.isdigit, str(updates[field])))
+                        if phone_digits:
+                            updates[field] = int(phone_digits)
+                        else:
+                            # If no digits found, remove the field
+                            del updates[field]
+                            logger.warning(f"Could not convert {field} to integer, removing from update")
+                except (ValueError, TypeError):
+                    logger.warning(f"Could not convert {field} to integer: {updates[field]}")
+                    del updates[field]
+        
+        # Remove None values
+        updates = {k: v for k, v in updates.items() if v is not None}
+        
         result = await self._make_request("PUT", f"contact/{contact_id}", data=updates)
         return result.get("data", result) if isinstance(result, dict) else result
     
@@ -360,61 +565,99 @@ class BoldTrailClient:
         self,
         contact_id: str,
         note: str,
-        subject: Optional[str] = None
+        title: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Add a note to a contact
         
         Reference: https://developer.insiderealestate.com/publicv2/reference/put_v2-public-contact-contact-id-action-note
         
+        API Parameters:
+        - details (string, required): The content/body of the note
+        - title (string, optional): The title of the note
+        - date (date-time, optional): Date to specify with the note. Default is current date/time
+        - action_owner_user_id (string, optional): Owner user id (company admin only)
+        
         Args:
-            contact_id: Contact ID
-            note: Note content
-            subject: Note subject/title (optional)
+            contact_id: Contact ID (integer, required)
+            note: Note content/body (will be sent as "details")
+            title: Note title (optional)
             
         Returns:
             Created note data
         """
         logger.info(f"Adding note to contact: {contact_id}")
         
-        # BoldTrail API requires "details" field, not "note"
+        # BoldTrail API expects "details" field for note content, "title" for note title
         payload = {"details": note}
-        if subject:
-            payload["subject"] = subject
+        if title:
+            payload["title"] = title
         
         return await self._make_request("PUT", f"contact/{contact_id}/action/note", data=payload)
     
     async def log_call(
         self,
         contact_id: str,
-        call_type: str = "Inbound",
-        subject: Optional[str] = None,
-        duration: Optional[int] = None,
-        notes: Optional[str] = None
+        direction: str = "inbound",
+        result: Optional[int] = None,
+        notes: Optional[str] = None,
+        date: Optional[str] = None,
+        recording_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Log a call activity to a contact
         
         Reference: https://developer.insiderealestate.com/publicv2/reference/put_v2-public-contact-contact-id-action-call
         
+        API Parameters (from official docs):
+        - direction (string, optional): 'outbound' or 'inbound'. Defaults to 'outbound' if not specified
+        - result (integer enum, optional): 1=Bad Number, 2=Not Home, 3=Contacted. Defaults to 3 if not specified
+        - notes (string, optional): Notes about the call
+        - date (date-time, optional): Date the call occurred. Default is current date/time
+        - recording_url (string, optional): URL to the call recording audio file
+        - action_owner_user_id (string, optional): Owner user id (company admin only)
+        
         Args:
-            contact_id: Contact ID
-            call_type: Type of call (Inbound, Outbound, Missed)
-            subject: Call subject/title
-            duration: Call duration in seconds
-            notes: Call notes
+            contact_id: Contact ID (integer, required in URL path)
+            direction: Call direction - 'inbound' or 'outbound' (default: 'inbound')
+            result: Call result - 1=Bad Number, 2=Not Home, 3=Contacted (default: 3)
+            notes: Notes about the call
+            date: Date the call occurred (date-time format, optional)
+            recording_url: URL to call recording (optional)
             
         Returns:
             Created call log data
         """
-        logger.info(f"Logging call for contact: {contact_id}")
+        logger.info(f"Logging call for contact: {contact_id}, direction: {direction}")
         
+        # Normalize direction to lowercase
+        direction_lower = direction.lower() if direction else "inbound"
+        if direction_lower not in ["inbound", "outbound"]:
+            logger.warning(f"Invalid direction '{direction}', defaulting to 'inbound'")
+            direction_lower = "inbound"
+        
+        # Build payload with correct field names
         payload = {
-            "type": call_type,
-            "subject": subject or "AI Concierge Call",
-            "duration": duration,
+            "direction": direction_lower,
             "notes": notes
         }
+        
+        # Add result if provided (must be 1, 2, or 3 per API docs)
+        if result is not None:
+            if result in [1, 2, 3]:
+                payload["result"] = result
+            else:
+                logger.warning(f"Invalid result value {result}, must be 1 (Bad Number), 2 (Not Home), or 3 (Contacted). Using default (3)")
+                payload["result"] = 3
+        else:
+            # Default to 3 (Contacted) if not specified
+            payload["result"] = 3
+        
+        # Add optional fields
+        if date:
+            payload["date"] = date
+        if recording_url:
+            payload["recording_url"] = recording_url
         
         # Remove None values
         payload = {k: v for k, v in payload.items() if v is not None}

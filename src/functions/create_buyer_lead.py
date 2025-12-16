@@ -56,7 +56,7 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
         # Create contact object
         contact = Contact(
             first_name=request.first_name,
-            last_name=request.last_name,
+            last_name=request.last_name or "",  # Handle None/empty
             phone=phone,
             email=email,
             contact_type=ContactType.BUYER,
@@ -90,51 +90,68 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
         
         # Save to CRM (creates contact with buyer lead info in one call)
         result = await crm_client.create_buyer_lead(buyer_lead)
-        contact_id = result.get("id")
         
-        logger.info(f"Buyer lead created successfully: {contact_id}")
+        # Extract contact ID (handle different response formats)
+        # Try multiple paths independently to handle various API response formats
+        contact_id = result.get("id")
+        if not contact_id and isinstance(result.get("data"), dict):
+            contact_id = result.get("data", {}).get("id")
+        if not contact_id and isinstance(result.get("contact"), dict):
+            contact_id = result.get("contact", {}).get("id")
+        
+        if not contact_id:
+            logger.error(f"Failed to extract contact ID from API response: {result}")
+            # Try to continue anyway - note addition will fail gracefully
+        
+        logger.info(f"Buyer lead created successfully with contact_id: {contact_id}")
         
         # Log call activity to CRM (required for tracking)
-        try:
-            await crm_client.log_call(
-                contact_id=contact_id,
-                call_type="Inbound",
-                subject="Buyer Inquiry - AI Concierge",
-                notes=f"Initial buyer inquiry call. Looking for {buyer_lead.property_type or 'property'} in {buyer_lead.location_preference or 'The Villages'}. Price range: ${buyer_lead.min_price or 0:,.0f} - ${buyer_lead.max_price or 0:,.0f}."
-            )
-            logger.info(f"Call logged successfully for contact: {contact_id}")
-        except Exception as e:
-            logger.warning(f"Failed to log call activity: {str(e)}")
+        if contact_id:
+            try:
+                await crm_client.log_call(
+                    contact_id=contact_id,
+                    direction="inbound",
+                    result=3,  # 3 = Contacted
+                    notes=f"Initial buyer inquiry call. Looking for {buyer_lead.property_type or 'property'} in {buyer_lead.location_preference or 'The Villages'}. Price range: ${buyer_lead.min_price or 0:,.0f} - ${buyer_lead.max_price or 0:,.0f}."
+                )
+                logger.info(f"Call logged successfully for contact: {contact_id}")
+            except Exception as e:
+                logger.warning(f"Failed to log call activity for contact {contact_id}: {str(e)}")
+        else:
+            logger.error("Cannot log call: contact_id is None")
         
         # Add detailed note with conversation context (required for CRM completeness)
-        try:
-            note_content = f"Buyer Lead from AI Voice Agent\n\n"
-            note_content += f"Property Preferences:\n"
-            if buyer_lead.property_type:
-                note_content += f"- Type: {buyer_lead.property_type}\n"
-            if buyer_lead.location_preference:
-                note_content += f"- Location: {buyer_lead.location_preference}\n"
-            if buyer_lead.min_price or buyer_lead.max_price:
-                note_content += f"- Price Range: ${buyer_lead.min_price or 0:,.0f} - ${buyer_lead.max_price or 0:,.0f}\n"
-            if buyer_lead.bedrooms:
-                note_content += f"- Bedrooms: {buyer_lead.bedrooms}+\n"
-            if buyer_lead.bathrooms:
-                note_content += f"- Bathrooms: {buyer_lead.bathrooms}+\n"
-            if buyer_lead.timeframe:
-                note_content += f"- Timeline: {buyer_lead.timeframe}\n"
-            if buyer_lead.pre_approved:
-                note_content += f"- Pre-approved: Yes\n"
-            if request.notes:
-                note_content += f"\nAdditional Notes:\n{request.notes}"
-            
-            await crm_client.add_note(
-                contact_id=contact_id,
-                note=note_content,
-                subject="AI Concierge - Buyer Lead Details"
-            )
-            logger.info(f"Note added successfully for contact: {contact_id}")
-        except Exception as e:
-            logger.warning(f"Failed to add note: {str(e)}")
+        if contact_id:
+            try:
+                note_content = f"Buyer Lead from AI Voice Agent\n\n"
+                note_content += f"Property Preferences:\n"
+                if buyer_lead.property_type:
+                    note_content += f"- Type: {buyer_lead.property_type}\n"
+                if buyer_lead.location_preference:
+                    note_content += f"- Location: {buyer_lead.location_preference}\n"
+                if buyer_lead.min_price or buyer_lead.max_price:
+                    note_content += f"- Price Range: ${buyer_lead.min_price or 0:,.0f} - ${buyer_lead.max_price or 0:,.0f}\n"
+                if buyer_lead.bedrooms:
+                    note_content += f"- Bedrooms: {buyer_lead.bedrooms}+\n"
+                if buyer_lead.bathrooms:
+                    note_content += f"- Bathrooms: {buyer_lead.bathrooms}+\n"
+                if buyer_lead.timeframe:
+                    note_content += f"- Timeline: {buyer_lead.timeframe}\n"
+                if buyer_lead.pre_approved:
+                    note_content += f"- Pre-approved: Yes\n"
+                if request.notes:
+                    note_content += f"\nAdditional Notes:\n{request.notes}"
+                
+                await crm_client.add_note(
+                    contact_id=contact_id,
+                    note=note_content,
+                    title="AI Concierge - Buyer Lead Details"
+                )
+                logger.info(f"Note added successfully for contact: {contact_id}")
+            except Exception as e:
+                logger.warning(f"Failed to add note for contact {contact_id}: {str(e)}")
+        else:
+            logger.error("Cannot add note: contact_id is None")
         
         # Send confirmation SMS
         try:
@@ -147,28 +164,8 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
         except Exception as e:
             logger.warning(f"Failed to send confirmation SMS: {str(e)}")
         
-        # Format price range for voice response
-        price_info = ""
-        if request.min_price and request.max_price:
-            price_info = f" in the ${request.min_price:,.0f} to ${request.max_price:,.0f} range"
-        elif request.max_price:
-            price_info = f" up to ${request.max_price:,.0f}"
-        
-        message = (
-            f"Perfect! I've recorded your information, {request.first_name}. "
-            f"You're looking for a {request.bedrooms or ''} bedroom property"
-            f"{price_info}"
-        )
-        
-        if request.location_preference:
-            message += f" in the {request.location_preference} area"
-        
-        message += (
-            ". One of our experienced agents will review your preferences and "
-            "contact you shortly to discuss available properties. "
-            "I've also sent you a confirmation text message. "
-            "Is there anything else I can help you with?"
-        )
+        # Concise response message per prompt guidelines
+        message = f"Perfect, {request.first_name}! Sally or one of our agents will call you shortly. You'll get a text too."
         
         return VapiResponse(
             success=True,
