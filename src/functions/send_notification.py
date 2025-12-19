@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from typing import Dict, Any
 from src.models.vapi_models import VapiResponse, SendNotificationRequest
 from src.integrations.twilio_client import TwilioClient
+from src.config.settings import settings
 from src.utils.logger import get_logger
 from src.utils.errors import TwilioError
 from src.utils.validators import validate_phone, validate_email
@@ -40,6 +41,12 @@ async def send_notification(request: SendNotificationRequest) -> VapiResponse:
         except Exception as e:
             logger.warning(f"Phone validation failed: {str(e)}")
             phone = request.recipient_phone
+        
+        # TEST MODE: Override recipient with test number
+        if settings.TEST_MODE:
+            original_phone = phone
+            phone = settings.TEST_AGENT_PHONE
+            logger.info(f"TEST MODE: Overriding notification recipient from {original_phone} to {phone}")
         
         sent_channels = []
         errors = []

@@ -19,6 +19,16 @@ When `TEST_MODE=true`, all call transfers via `route_to_agent` will be redirecte
 - **TEST MODE OVERRIDES**: Instead of transferring to Kim's real number (352-626-7671), it transfers to your test number
 - You'll receive the call on your test phone
 
+### 1B. **SMS Notifications to Agents**
+
+When `TEST_MODE=true`, all SMS notifications to agents via `send_notification` will also be redirected to your test number.
+
+**How it works:**
+- System attempts to send SMS notification to agent before transfer (e.g., to Kim Coffer at 352-626-7671)
+- **TEST MODE OVERRIDES**: Instead of sending to Kim's real number, SMS is sent to your test number
+- You'll receive the SMS notification on your test phone
+- This ensures you can test the complete flow without bothering real agents
+
 **Configuration needed in `.env`:**
 ```env
 TEST_MODE=true

@@ -10,6 +10,7 @@ from src.models.vapi_models import VapiResponse, CheckPropertyRequest
 from src.integrations.boldtrail import BoldTrailClient
 from src.utils.logger import get_logger
 from src.utils.errors import BoldTrailError
+from src.utils.speech_format import format_spoken_address, format_spoken_price
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -98,10 +99,14 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
             elif prop_status == 'sold':
                 status_note = " I should note that this property has been sold. "
             
+            # Format address and price for speech
+            spoken_address = format_spoken_address(prop.get('address', ''))
+            spoken_price = format_spoken_price(prop.get('price'))
+            
             message = (
-                f"I found a property at {prop.get('address')}, {prop.get('city')}. "
+                f"I found a property at {spoken_address}, {prop.get('city')}. "
                 f"It's a {prop.get('bedrooms', 0)} bedroom, {prop.get('bathrooms', 0)} bathroom "
-                f"{prop_type} listed at ${prop.get('price', 0):,.0f}.{status_note}"
+                f"{prop_type} listed at {spoken_price}.{status_note}"
             )
             if mls_num and mls_num != 'N/A':
                 message += f"The MLS number is {mls_num}. "
@@ -116,10 +121,14 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
             else:
                 message += "Would you like more details about this property?"
         else:
+            # Format price range for speech
+            min_price_spoken = format_spoken_price(min(p.get('price', 0) for p in properties))
+            max_price_spoken = format_spoken_price(max(p.get('price', 0) for p in properties))
+            
             message = (
                 f"I found {len(properties)} properties matching your criteria. "
-                f"The prices range from ${min(p.get('price', 0) for p in properties):,.0f} "
-                f"to ${max(p.get('price', 0) for p in properties):,.0f}. "
+                f"The prices range from {min_price_spoken} "
+                f"to {max_price_spoken}. "
                 f"Would you like me to tell you about each one?"
             )
         

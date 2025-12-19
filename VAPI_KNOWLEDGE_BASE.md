@@ -20,11 +20,23 @@ This knowledge base explains what this project does, what the assistant must han
 ### 1) Specific Property Inquiry
 **Goal**: Give quick basics (beds/baths/price/status) and connect to listing agent if requested.
 
-**Must do**
-- Ask for address or MLS #.
-- Use `check_property`.
-- Summarize briefly (no descriptions).
-- If caller wants an agent: collect **name + phone**, then transfer using `route_to_agent`.
+**CRITICAL FLOW (DO NOT SKIP STEPS):**
+
+1. **Get property address**: "What's the address?" or "Do you have the MLS number?"
+2. **Look it up**: Call `check_property`
+3. **Give basics briefly**: beds/baths + price + status (NO descriptions, NO features)
+4. **If caller wants agent, COLLECT CONTACT INFO FIRST** (do NOT skip):
+   - "Can I get your name?"
+   - "And what's a good number for you?"
+   - "Just to confirm, your number is [phone]. Correct?" (confirm back)
+   - "And your email address?"
+   - "Just to confirm, that's [email]. Correct?" (confirm back)
+5. **Send notification to agent**: Call `send_notification` with:
+   - `recipient_phone`: agent's phone from `check_property` response
+   - `message`: "New property inquiry from [Name]. Phone: [Customer Phone]. Email: [Customer Email]. Property: [Numeric Address]. Transferring call now."
+   - **IMPORTANT**: Use the NUMERIC address from the tool response (e.g., "6794 BOSS COURT"), NOT the spoken form
+   - If this fails, continue anyway (don't block the transfer)
+6. **Transfer**: Call `route_to_agent` with agent details
 
 **If listing agent info missing**
 - Use `get_agent_info` (no filters) to get an available agent and transfer.
@@ -32,16 +44,22 @@ This knowledge base explains what this project does, what the assistant must han
 **If transfer fails**
 - Offer fallback: another available agent; if still failing, promise broker follow-up.
 
+**Number Speaking Rules (CRITICAL)**
+- Tool responses now format addresses/prices automatically
+- Addresses: "sixty-seven ninety-four Boss Court" NOT "6 7 9 4"
+- Prices: "three thirty-nine thousand" or "three thirty-nine" NOT "3 3 9" or "3 39"
+- Always say numbers naturally, NEVER digit-by-digit
+
 ### 2) Buyer (No Specific Property)
 **Goal**: Qualify quickly and create a buyer lead for follow-up.
 
 **Minimum required before creating a buyer lead**
 - Location preference
-- Timeframe to buy (do NOT assume “ASAP”)
+- Timeframe to buy (do NOT assume "ASAP")
 - Price range
 - Name
-- Phone
-- Email: ask (preferred), but may be optional
+- Phone (confirm back to caller)
+- Email: ALWAYS ASK (preferred but optional if caller declines)
 
 **Must do**
 - Ask one question at a time.
@@ -156,13 +174,29 @@ Examples: office hours, services, agent lookup, complaints, commission questions
 - **Confirmation SMS sent to the caller** (via Twilio)
 
 ### `send_notification` (POST `/functions/send_notification`)
-**Use when**: you need a one-off/custom SMS or email (special cases).
+**Use when**: 
+- Notifying agents about incoming transfers (property inquiries)
+- One-off/custom SMS or email (special cases)
 
 **Do NOT use for standard lead confirmations** (those are sent automatically when leads are created).
 
 **Inputs**
 - Required: `recipient_phone`, `message`
 - Optional: `notification_type` (default `sms`), `recipient_email`
+
+**Example for property inquiry transfer:**
+```json
+{
+  "recipient_phone": "352-626-7671",
+  "message": "New property inquiry from John Smith. Phone: 352-555-1234. Email: john@email.com. Property: 6794 BOSS COURT, THE VILLAGES. Transferring call now.",
+  "notification_type": "sms"
+}
+```
+
+**CRITICAL:** 
+- Include customer phone and email in the message
+- Use the NUMERIC address from `results[0].address` (e.g., "6794 BOSS COURT"), NOT the spoken form
+- Format: "New property inquiry from [Name]. Phone: [Phone]. Email: [Email]. Property: [Numeric Address]. Transferring call now."
 
 **Important operational note**
 - SMS delivery depends on Twilio account configuration (Geo Permissions for international numbers).
@@ -175,7 +209,11 @@ Examples: office hours, services, agent lookup, complaints, commission questions
 - No negative statements about competitors/people/properties.
 - Keep responses short (1–2 sentences).
 - Ask one question at a time.
-- Confirm details back before ending the call.
+- **ALWAYS ask for email** (even for transfers).
+- **ALWAYS confirm phone back** to caller.
+- **ALWAYS confirm details back** before ending the call.
+- **ALWAYS notify agent via `send_notification`** BEFORE transferring property inquiry calls.
+- **NEVER say numbers digit-by-digit** - say them naturally (see rules above).
 
 ---
 
