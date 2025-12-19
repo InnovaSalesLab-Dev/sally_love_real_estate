@@ -14,8 +14,6 @@ from src.utils.validators import validate_phone, validate_email
 logger = get_logger(__name__)
 router = APIRouter()
 
-twilio_client = TwilioClient()
-
 
 @router.post("/send_notification")
 async def send_notification(request: SendNotificationRequest) -> VapiResponse:
@@ -32,7 +30,9 @@ async def send_notification(request: SendNotificationRequest) -> VapiResponse:
     Used internally by the voice agent to send confirmations and updates.
     """
     try:
-        logger.info(f"Sending {request.notification_type} notification to: {request.recipient_phone}")
+        # Normalize notification_type (default to "sms" if not provided)
+        notification_type = (request.notification_type or "sms").lower()
+        logger.info(f"Sending {notification_type} notification to: {request.recipient_phone}")
         
         # Validate phone
         try:
@@ -45,8 +45,10 @@ async def send_notification(request: SendNotificationRequest) -> VapiResponse:
         errors = []
         
         # Send SMS
-        if request.notification_type in ["sms", "both"]:
+        if notification_type in ["sms", "both"]:
             try:
+                # Initialize Twilio client (lazy initialization)
+                twilio_client = TwilioClient()
                 sms_result = await twilio_client.send_sms(
                     to_number=phone,
                     message=request.message
@@ -54,11 +56,16 @@ async def send_notification(request: SendNotificationRequest) -> VapiResponse:
                 sent_channels.append("sms")
                 logger.info(f"SMS sent successfully: {sms_result.get('sid')}")
             except TwilioError as e:
-                logger.error(f"Failed to send SMS: {e.message}")
-                errors.append(f"SMS: {e.message}")
+                error_msg = getattr(e, 'message', str(e))
+                logger.error(f"Failed to send SMS: {error_msg}")
+                errors.append(f"SMS: {error_msg}")
+            except Exception as e:
+                error_msg = str(e)
+                logger.exception(f"Unexpected error sending SMS: {error_msg}")
+                errors.append(f"SMS: {error_msg}")
         
         # Send email (if email provided and requested)
-        if request.notification_type in ["email", "both"] and request.recipient_email:
+        if notification_type in ["email", "both"] and request.recipient_email:
             try:
                 email = validate_email(request.recipient_email)
                 # Email sending would be implemented here
@@ -72,7 +79,13 @@ async def send_notification(request: SendNotificationRequest) -> VapiResponse:
         
         # Check if at least one channel succeeded
         if not sent_channels:
-            error_msg = "; ".join(errors) if errors else "Unknown error"
+            if not errors:
+                # No channels attempted and no errors - invalid notification_type
+                error_msg = f"Invalid notification_type '{notification_type}'. Must be 'sms', 'email', or 'both'."
+                logger.error(error_msg)
+            else:
+                error_msg = "; ".join(errors)
+            
             return VapiResponse(
                 success=False,
                 error=f"Failed to send notification: {error_msg}",
@@ -91,7 +104,7 @@ async def send_notification(request: SendNotificationRequest) -> VapiResponse:
                 "recipient_phone": phone,
                 "recipient_email": request.recipient_email,
                 "channels": sent_channels,
-                "notification_type": request.notification_type,
+                "notification_type": notification_type,
                 "errors": errors if errors else None
             }
         )

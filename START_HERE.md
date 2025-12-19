@@ -45,8 +45,9 @@ pytest
 
 # 4. Deploy to production
 
-# 5. Create Vapi assistant
-python scripts/setup_vapi.py
+# 5. Configure Vapi assistant in dashboard
+# Go to https://dashboard.vapi.ai and configure your assistant manually
+# Copy system prompt from VAPI_SYSTEM_PROMPT.md
 ```
 
 ### Option C: Jump to Documentation
@@ -172,7 +173,7 @@ curl -X POST http://localhost:8000/functions/check_property \
 ## 🎯 Key Files to Customize
 
 1. **`src/config/settings.py`** - Configuration
-2. **`scripts/setup_vapi.py`** - Vapi assistant prompts
+2. **`VAPI_SYSTEM_PROMPT.md`** - System prompt for Vapi assistant (copy to dashboard)
 3. **`src/functions/*.py`** - Function logic
 4. **`.env`** - Your API credentials
 
@@ -206,7 +207,7 @@ curl -X POST http://localhost:8000/functions/check_property \
 - [ ] **Test**: `python scripts/test_integrations.py`
 - [ ] **Run**: `python main.py`
 - [ ] **Deploy**: To your production server
-- [ ] **Setup Vapi**: `python scripts/setup_vapi.py`
+- [ ] **Configure Vapi**: Set up assistant in Vapi dashboard (use prompt from `VAPI_SYSTEM_PROMPT.md`)
 - [ ] **Test Call**: Make a test call to verify
 
 ---

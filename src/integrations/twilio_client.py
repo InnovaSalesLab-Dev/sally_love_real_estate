@@ -51,8 +51,30 @@ class TwilioClient:
         """
         from_number = from_number or self.phone_number
         
+        # Validate configuration
+        if not self.account_sid or not self.auth_token:
+            raise TwilioError(
+                message="Twilio credentials not configured (TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN missing)",
+                status_code=500,
+                details={"account_sid_set": bool(self.account_sid), "auth_token_set": bool(self.auth_token)}
+            )
+        
+        if not from_number:
+            raise TwilioError(
+                message="Twilio phone number not configured (TWILIO_PHONE_NUMBER missing)",
+                status_code=500,
+                details={"from_number": from_number}
+            )
+        
+        if not self.client:
+            raise TwilioError(
+                message="Twilio client not initialized",
+                status_code=500,
+                details={}
+            )
+        
         try:
-            logger.info(f"Sending SMS to {to_number}")
+            logger.info(f"Sending SMS to {to_number} from {from_number}")
             
             message_obj = self.client.messages.create(
                 to=to_number,
@@ -69,11 +91,20 @@ class TwilioClient:
             }
             
         except TwilioRestException as e:
-            logger.exception(f"Twilio SMS error: {str(e)}")
+            error_msg = getattr(e, 'msg', str(e))
+            logger.exception(f"Twilio SMS error: {error_msg}")
             raise TwilioError(
-                message=f"Failed to send SMS: {e.msg}",
-                status_code=e.status,
-                details={"code": e.code, "error": e.msg}
+                message=f"Failed to send SMS: {error_msg}",
+                status_code=getattr(e, 'status', 500),
+                details={"code": getattr(e, 'code', None), "error": error_msg}
+            )
+        except Exception as e:
+            error_msg = str(e)
+            logger.exception(f"Unexpected error in send_sms: {error_msg}")
+            raise TwilioError(
+                message=f"Failed to send SMS: {error_msg}",
+                status_code=500,
+                details={"error": error_msg}
             )
     
     async def make_call(

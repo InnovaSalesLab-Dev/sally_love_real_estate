@@ -58,11 +58,11 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 ### 4. Set Up Vapi Assistants
 
-After deploying your server (with public URL), run:
-
-```bash
-python scripts/setup_vapi.py
-```
+After deploying your server (with public URL), configure your assistant in the Vapi dashboard:
+1. Go to https://dashboard.vapi.ai
+2. Create or edit your assistant
+3. Copy the system prompt from `VAPI_SYSTEM_PROMPT.md`
+4. Configure function endpoints pointing to your deployed server
 
 ## 📁 Project Structure
 
@@ -102,7 +102,6 @@ sally_love_voice_agent/
 │   │   └── validators.py
 │   └── __init__.py
 ├── scripts/                 # Setup and utility scripts
-│   ├── setup_vapi.py
 │   ├── test_integrations.py
 │   └── verify_setup.py
 ├── tests/                   # Test files
@@ -152,8 +151,8 @@ pytest tests/test_functions.py
 1. Set `ENVIRONMENT=production` in `.env`
 2. Set `WEBHOOK_BASE_URL` to your public server URL
 3. Deploy to your hosting platform (Fly.io, Railway, Render, AWS, etc.)
-4. Run `scripts/setup_vapi.py` to create assistants
-5. Configure phone number in Vapi dashboard
+4. Configure assistant in Vapi dashboard (use prompt from `VAPI_SYSTEM_PROMPT.md`)
+5. Assign phone number to assistant in Vapi dashboard
 
 ## 📝 Business Rules
 
