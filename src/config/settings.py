@@ -8,52 +8,61 @@ from typing import Optional
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables"""
+    """Application settings loaded from environment variables
+    
+    All values are loaded from .env file or environment variables.
+    No hardcoded defaults for configuration values.
+    """
     
     # Environment
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: str  # Must be set in .env
     
     # Server Configuration
-    HOST: str = "0.0.0.0"
-    PORT: int = 8000
-    WEBHOOK_BASE_URL: str = "http://localhost:8000"
+    HOST: str  # Must be set in .env
+    PORT: int  # Must be set in .env
+    WEBHOOK_BASE_URL: str  # Must be set in .env
     
     # Vapi Configuration
-    VAPI_API_KEY: str = ""
-    VAPI_PHONE_NUMBER_ID: Optional[str] = None
-    VAPI_API_URL: str = "https://api.vapi.ai"
+    VAPI_API_KEY: str  # Must be set in .env
+    VAPI_PHONE_NUMBER_ID: Optional[str] = None  # Optional
+    VAPI_API_URL: str = "https://api.vapi.ai"  # Static - never changes
     
     # BoldTrail CRM Configuration
-    BOLDTRAIL_API_KEY: str = ""
-    BOLDTRAIL_API_URL: str = "https://api.kvcore.com/v2/public"
-    BOLDTRAIL_ACCOUNT_ID: str = ""
-    BOLDTRAIL_ZAPIER_KEY: str = ""
+    BOLDTRAIL_API_KEY: str  # Must be set in .env
+    BOLDTRAIL_API_URL: str = "https://api.kvcore.com/v2/public"  # Static - never changes
+    BOLDTRAIL_ACCOUNT_ID: str  # Must be set in .env
+    BOLDTRAIL_ZAPIER_KEY: str  # Must be set in .env
     
-    # Stellar MLS Configuration
+    # Stellar MLS Configuration (Optional - not currently used)
     STELLAR_MLS_USERNAME: str = ""
     STELLAR_MLS_PASSWORD: str = ""
-    STELLAR_MLS_API_URL: str = "https://api.stellarmls.com/v1"
+    STELLAR_MLS_API_URL: str = "https://api.stellarmls.com/v1"  # Static
     
     # Twilio Configuration
-    TWILIO_ACCOUNT_SID: str = ""
-    TWILIO_AUTH_TOKEN: str = ""
-    TWILIO_PHONE_NUMBER: str = "+13523992010"
+    TWILIO_ACCOUNT_SID: str  # Must be set in .env
+    TWILIO_AUTH_TOKEN: str  # Must be set in .env
+    TWILIO_PHONE_NUMBER: str  # Must be set in .env
     
     # Business Configuration
-    BUSINESS_NAME: str = "Sally Love Real Estate"
-    BUSINESS_PHONE: str = "+13523992010"
-    OFFICE_HOURS_START: str = "09:00"
-    OFFICE_HOURS_END: str = "17:00"
-    OFFICE_TIMEZONE: str = "America/New_York"
+    BUSINESS_NAME: str  # Must be set in .env
+    BUSINESS_PHONE: str  # Must be set in .env
+    OFFICE_HOURS_START: str  # Must be set in .env
+    OFFICE_HOURS_END: str  # Must be set in .env
+    OFFICE_TIMEZONE: str  # Must be set in .env
+    
+    # Lead Notification Configuration (who gets notified when leads are created)
+    OFFICE_NOTIFICATION_PHONE: str  # Must be set in .env
+    JEFF_NOTIFICATION_PHONE: str = ""  # Optional - empty if not set
+    LEAD_NOTIFICATION_ENABLED: bool  # Must be set in .env
     
     # Testing Configuration
-    TEST_MODE: bool = True
-    TEST_AGENT_NAME: str = "Hammas Ali"
-    TEST_AGENT_PHONE: str = "+923035699010"
+    TEST_MODE: bool  # Must be set in .env
+    TEST_AGENT_NAME: str  # Must be set in .env
+    TEST_AGENT_PHONE: str  # Must be set in .env
     
     # Logging
-    LOG_LEVEL: str = "INFO"
-    LOG_FILE: str = "logs/app.log"
+    LOG_LEVEL: str  # Must be set in .env
+    LOG_FILE: str  # Must be set in .env
     
     model_config = SettingsConfigDict(
         env_file=".env",

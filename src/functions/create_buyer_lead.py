@@ -9,6 +9,7 @@ from src.models.vapi_models import VapiResponse, CreateBuyerLeadRequest
 from src.models.crm_models import Contact, BuyerLead, ContactType, LeadStatus
 from src.integrations.boldtrail import BoldTrailClient
 from src.integrations.twilio_client import TwilioClient
+from src.config.settings import settings
 from src.utils.logger import get_logger
 from src.utils.errors import BoldTrailError
 from src.utils.validators import validate_phone, validate_email
@@ -76,20 +77,44 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
             bathrooms=request.bathrooms,
             timeframe=request.timeframe,
             pre_approved=request.pre_approved,
+            special_requirements=request.special_requirements,
+            buyer_experience=request.buyer_experience,
+            payment_method=request.payment_method,
             status=LeadStatus.NEW
         )
         
         # Check if contact already exists (optional duplicate check)
         existing_contacts = []
+        existing_contact_id = None
         try:
             existing_contacts = await crm_client.search_contacts(phone=phone, email=email)
             if existing_contacts:
                 logger.info(f"Found existing contact(s) for phone/email: {len(existing_contacts)}")
+                # Use the first existing contact
+                existing_contact_id = existing_contacts[0].get('id')
+                logger.info(f"Will update existing contact ID: {existing_contact_id}")
         except Exception as e:
             logger.warning(f"Contact search failed, proceeding with lead creation: {str(e)}")
         
-        # Save to CRM (creates contact with buyer lead info in one call)
-        result = await crm_client.create_buyer_lead(buyer_lead)
+        # If contact exists, update it; otherwise create new
+        if existing_contact_id:
+            logger.info(f"Updating existing buyer contact: {existing_contact_id}")
+            # Update existing contact with new preferences
+            try:
+                update_data = {}
+                if buyer_lead.location_preference:
+                    update_data['notes'] = f"Updated buyer preferences: Location: {buyer_lead.location_preference}, Price: ${buyer_lead.min_price or 0:,.0f}-${buyer_lead.max_price or 0:,.0f}, Timeline: {buyer_lead.timeframe}"
+                
+                await crm_client.update_contact(existing_contact_id, update_data)
+                result = {"id": existing_contact_id}
+                logger.info(f"Successfully updated existing contact: {existing_contact_id}")
+            except Exception as e:
+                logger.error(f"Failed to update existing contact: {str(e)}")
+                # Fall back to creating new lead
+                result = await crm_client.create_buyer_lead(buyer_lead)
+        else:
+            # Save to CRM (creates contact with buyer lead info in one call)
+            result = await crm_client.create_buyer_lead(buyer_lead)
         
         # Extract contact ID (handle different response formats)
         # Try multiple paths independently to handle various API response formats
@@ -137,6 +162,12 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
                     note_content += f"- Bathrooms: {buyer_lead.bathrooms}+\n"
                 if buyer_lead.timeframe:
                     note_content += f"- Timeline: {buyer_lead.timeframe}\n"
+                if buyer_lead.special_requirements:
+                    note_content += f"- Special Requirements: {buyer_lead.special_requirements}\n"
+                if buyer_lead.buyer_experience:
+                    note_content += f"- Buyer Experience: {buyer_lead.buyer_experience}\n"
+                if buyer_lead.payment_method:
+                    note_content += f"- Payment Method: {buyer_lead.payment_method}\n"
                 if buyer_lead.pre_approved:
                     note_content += f"- Pre-approved: Yes\n"
                 if request.notes:
@@ -153,7 +184,7 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
         else:
             logger.error("Cannot add note: contact_id is None")
         
-        # Send confirmation SMS
+        # Send confirmation SMS to buyer
         try:
             confirmation_message = (
                 f"Hi {request.first_name}! Thank you for your interest. "
@@ -161,11 +192,55 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
                 f"- Sally Love Real Estate"
             )
             await twilio_client.send_sms(phone, confirmation_message)
+            logger.info(f"Confirmation SMS sent to buyer: {phone}")
         except Exception as e:
-            logger.warning(f"Failed to send confirmation SMS: {str(e)}")
+            logger.warning(f"Failed to send confirmation SMS to buyer: {str(e)}")
+        
+        # Send notification to office/Jeff about new buyer lead (respects TEST_MODE)
+        if settings.LEAD_NOTIFICATION_ENABLED:
+            try:
+                # Build notification message for office
+                office_notification = (
+                    f"🏠 NEW BUYER LEAD from AI Agent\n\n"
+                    f"Name: {request.first_name} {request.last_name}\n"
+                    f"Phone: {phone}\n"
+                    f"Email: {email or 'Not provided'}\n"
+                    f"Location: {buyer_lead.location_preference or 'Not specified'}\n"
+                    f"Price Range: ${buyer_lead.min_price or 0:,.0f} - ${buyer_lead.max_price or 0:,.0f}\n"
+                    f"Timeline: {buyer_lead.timeframe or 'Not specified'}\n"
+                    f"Property Type: {buyer_lead.property_type or 'Any'}\n"
+                    f"Beds/Baths: {buyer_lead.bedrooms or 'Any'} bed / {buyer_lead.bathrooms or 'Any'} bath\n"
+                )
+                
+                # Add optional new fields if provided
+                if buyer_lead.special_requirements:
+                    office_notification += f"Special Requirements: {buyer_lead.special_requirements}\n"
+                if buyer_lead.buyer_experience:
+                    office_notification += f"Experience: {buyer_lead.buyer_experience}\n"
+                if buyer_lead.payment_method:
+                    office_notification += f"Payment: {buyer_lead.payment_method}\n"
+                if buyer_lead.pre_approved:
+                    office_notification += f"Pre-approved: Yes\n"
+                
+                office_notification += f"\nContact ID: {contact_id}\nAction: Follow up ASAP"
+                
+                # Determine notification recipient (TEST_MODE overrides)
+                notification_phone = settings.TEST_AGENT_PHONE if settings.TEST_MODE else (
+                    settings.JEFF_NOTIFICATION_PHONE or settings.OFFICE_NOTIFICATION_PHONE
+                )
+                
+                if notification_phone:
+                    await twilio_client.send_sms(notification_phone, office_notification)
+                    logger.info(f"Office notification sent to: {notification_phone} (TEST_MODE: {settings.TEST_MODE})")
+                else:
+                    logger.warning("No notification phone configured (JEFF_NOTIFICATION_PHONE or OFFICE_NOTIFICATION_PHONE)")
+                    
+            except Exception as e:
+                logger.warning(f"Failed to send office notification: {str(e)}")
+                # Don't fail the whole operation if notification fails
         
         # Concise response message per prompt guidelines
-        message = f"Perfect, {request.first_name}! Sally or one of our agents will call you shortly. You'll get a text too."
+        message = f"Perfect, {request.first_name}! Sally or one of our agents will call you to discuss available properties. You'll also get a text."
         
         return VapiResponse(
             success=True,
@@ -179,6 +254,19 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
         
     except BoldTrailError as e:
         logger.error(f"CRM error in create_buyer_lead: {e.message}")
+        
+        # Handle duplicate email/phone gracefully
+        if "already exists" in e.message.lower() or "duplicate" in e.message.lower():
+            logger.info("Duplicate contact detected, attempting to handle gracefully")
+            return VapiResponse(
+                success=True,
+                message=f"Perfect, {request.first_name}! We have your information on file. Sally or one of our agents will call you to discuss available properties. You'll also get a text.",
+                data={
+                    "contact_id": None,
+                    "note": "Duplicate contact - existing record in CRM"
+                }
+            )
+        
         return VapiResponse(
             success=False,
             error=(

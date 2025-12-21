@@ -64,6 +64,9 @@ class BuyerLead(BaseModel):
     lender_name: Optional[str] = None
     must_haves: List[str] = Field(default_factory=list)
     nice_to_haves: List[str] = Field(default_factory=list)
+    special_requirements: Optional[str] = None  # Golf cart garage, water view, etc.
+    buyer_experience: Optional[str] = None  # "first-time", "experienced", or "not-specified"
+    payment_method: Optional[str] = None  # "cash", "financing", or "not-sure"
     status: LeadStatus = LeadStatus.NEW
     assigned_agent_id: Optional[str] = None
 
@@ -81,12 +84,14 @@ class SellerLead(BaseModel):
     square_feet: Optional[int] = None
     lot_size: Optional[str] = None
     year_built: Optional[int] = None
-    condition: Optional[str] = None
+    condition: Optional[str] = None  # Note: Also aliased as property_condition in requests
     reason_for_selling: Optional[str] = None
     timeframe: Optional[str] = None
     estimated_value: Optional[float] = None
     mortgage_balance: Optional[float] = None
     improvements: Optional[str] = None
+    previously_listed: Optional[bool] = None  # Has the property been listed before?
+    currently_occupied: Optional[bool] = None  # Are they currently living there?
     status: LeadStatus = LeadStatus.NEW
     assigned_agent_id: Optional[str] = None
 

@@ -2,6 +2,23 @@
 
 ✅ **AI-powered voice automation system** for real estate operations using Vapi.ai, BoldTrail CRM, and Stellar MLS.
 
+---
+
+## 📚 Documentation
+
+**All documentation is organized in the [`/docs`](./docs) folder by category.**
+
+👉 **[View Documentation Index](./docs/INDEX.md)** - Complete guide to all documentation
+
+**Quick Links:**
+- 🚀 [Getting Started](./docs/getting-started/START_HERE.md)
+- ⚙️ [Configuration Guide](./docs/configuration/ENV_CONFIGURATION.md)
+- 🤖 [Vapi AI Setup](./docs/vapi/VAPI_SYSTEM_PROMPT_2.md)
+- 📋 [Requirements & Status](./docs/features/CLIENT_REQUIREMENTS_AUDIT.md)
+- 🚀 [Deployment Guide](./docs/deployment/DEPLOY_INSTRUCTIONS.md)
+
+---
+
 ## 🎯 Overview
 
 Intelligent voice agent system for Sally Love Real Estate that handles:

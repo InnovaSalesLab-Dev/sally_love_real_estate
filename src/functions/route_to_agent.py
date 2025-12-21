@@ -11,6 +11,7 @@ import httpx
 import json
 from src.models.vapi_models import VapiResponse
 from src.integrations.boldtrail import BoldTrailClient
+from src.integrations.twilio_client import TwilioClient
 from src.config.settings import settings
 from src.utils.logger import get_logger
 from src.utils.errors import BoldTrailError
@@ -19,6 +20,44 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 crm_client = BoldTrailClient()
+twilio_client = TwilioClient()
+
+
+async def send_failed_transfer_notification(
+    agent_name: str,
+    agent_phone: str,
+    caller_name: Optional[str] = None,
+    reason: Optional[str] = None
+):
+    """
+    Send notification to office/Jeff when a transfer fails
+    This helps ensure no calls are lost
+    """
+    try:
+        if not settings.LEAD_NOTIFICATION_ENABLED:
+            return
+            
+        notification_message = (
+            f"⚠️ FAILED TRANSFER ALERT\n\n"
+            f"Attempted transfer to: {agent_name} ({agent_phone})\n"
+            f"Caller: {caller_name or 'Unknown'}\n"
+            f"Reason: {reason or 'Not specified'}\n"
+            f"\nAction: Please call back ASAP"
+        )
+        
+        # Determine notification recipient (TEST_MODE overrides)
+        notification_phone = settings.TEST_AGENT_PHONE if settings.TEST_MODE else (
+            settings.JEFF_NOTIFICATION_PHONE or settings.OFFICE_NOTIFICATION_PHONE
+        )
+        
+        if notification_phone:
+            await twilio_client.send_sms(notification_phone, notification_message)
+            logger.info(f"Failed transfer notification sent to: {notification_phone} (TEST_MODE: {settings.TEST_MODE})")
+        else:
+            logger.warning("No notification phone configured for failed transfer alert")
+            
+    except Exception as e:
+        logger.warning(f"Failed to send transfer failure notification: {str(e)}")
 
 
 @router.post("/route_to_agent")
@@ -174,10 +213,14 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
                     arguments = json.loads(arguments)
                 agent_phone = arguments.get("agent_phone", "")
                 agent_name = arguments.get("agent_name", "an agent")
+                caller_name = arguments.get("caller_name")
+                reason = arguments.get("reason")
             else:
                 params = body.get("parameters", body)
                 agent_phone = params.get("agent_phone", "")
                 agent_name = params.get("agent_name", "an agent")
+                caller_name = params.get("caller_name")
+                reason = params.get("reason")
             
             if agent_phone:
                 # Format phone
@@ -196,6 +239,26 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
         except Exception as transfer_error:
             logger.error(f"Transfer preparation also failed: {str(transfer_error)}")
         
+        # Send notification about failed transfer
+        await send_failed_transfer_notification(
+            agent_name=agent_name if 'agent_name' in locals() else "Unknown Agent",
+            agent_phone=agent_phone if 'agent_phone' in locals() else "Unknown",
+            caller_name=caller_name if 'caller_name' in locals() else None,
+            reason=reason if 'reason' in locals() else "CRM verification failed"
+        )
+        
+        # Try fallback to office line
+        fallback_phone = settings.TEST_AGENT_PHONE if settings.TEST_MODE else settings.OFFICE_NOTIFICATION_PHONE
+        if fallback_phone:
+            logger.info(f"Attempting fallback transfer to office line: {fallback_phone}")
+            return {
+                "destination": {
+                    "type": "number",
+                    "number": fallback_phone,
+                    "message": "I'm connecting you to our office now. Please hold."
+                }
+            }
+        
         return VapiResponse(
             success=False,
             error="CRM verification failed",
@@ -204,6 +267,50 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
     
     except Exception as e:
         logger.exception(f"Error in route_to_agent: {str(e)}")
+        
+        # Send notification about failed transfer
+        try:
+            body = await request.json()
+            message = body.get("message", {})
+            tool_with_tool_call_list = message.get("toolWithToolCallList", [])
+            
+            if tool_with_tool_call_list:
+                tool_call = tool_with_tool_call_list[0].get("toolCall", {})
+                arguments = tool_call.get("function", {}).get("arguments", {})
+                if isinstance(arguments, str):
+                    arguments = json.loads(arguments)
+                agent_name = arguments.get("agent_name", "Unknown")
+                agent_phone = arguments.get("agent_phone", "Unknown")
+                caller_name = arguments.get("caller_name")
+                reason = arguments.get("reason")
+            else:
+                params = body.get("parameters", body)
+                agent_name = params.get("agent_name", "Unknown")
+                agent_phone = params.get("agent_phone", "Unknown")
+                caller_name = params.get("caller_name")
+                reason = params.get("reason")
+            
+            await send_failed_transfer_notification(
+                agent_name=agent_name,
+                agent_phone=agent_phone,
+                caller_name=caller_name,
+                reason=f"Transfer error: {str(e)}"
+            )
+        except Exception as notification_error:
+            logger.error(f"Failed to send notification about transfer failure: {str(notification_error)}")
+        
+        # Try fallback to office line
+        fallback_phone = settings.TEST_AGENT_PHONE if settings.TEST_MODE else settings.OFFICE_NOTIFICATION_PHONE
+        if fallback_phone:
+            logger.info(f"Attempting fallback transfer to office line: {fallback_phone}")
+            return {
+                "destination": {
+                    "type": "number",
+                    "number": fallback_phone,
+                    "message": "I'm connecting you to our office now. Please hold."
+                }
+            }
+        
         return VapiResponse(
             success=False,
             error=f"Transfer failed: {str(e)}",

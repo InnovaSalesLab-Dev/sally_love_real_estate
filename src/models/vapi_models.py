@@ -139,6 +139,9 @@ class CreateBuyerLeadRequest(BaseModel):
     bathrooms: Optional[float] = None
     timeframe: Optional[str] = None
     pre_approved: Optional[bool] = None
+    special_requirements: Optional[str] = None  # Golf cart garage, water view, etc.
+    buyer_experience: Optional[str] = None  # "first-time", "experienced", or "not-specified"
+    payment_method: Optional[str] = None  # "cash", "financing", or "not-sure"
     notes: Optional[str] = None
     
     # Convert empty strings to None for numeric fields
@@ -173,7 +176,7 @@ class CreateBuyerLeadRequest(BaseModel):
         return v
     
     # Strip whitespace from string fields
-    @field_validator('email', 'property_type', 'location_preference', 'timeframe', 'notes', mode='before')
+    @field_validator('email', 'property_type', 'location_preference', 'timeframe', 'special_requirements', 'buyer_experience', 'payment_method', 'notes', mode='before')
     @classmethod
     def strip_strings(cls, v):
         """Strip whitespace and convert empty strings to None"""
@@ -202,6 +205,9 @@ class CreateSellerLeadRequest(BaseModel):
     reason_for_selling: Optional[str] = None
     timeframe: Optional[str] = None
     estimated_value: Optional[float] = None
+    property_condition: Optional[str] = None  # excellent, good, fair, needs-work
+    previously_listed: Optional[bool] = None  # Has it been listed before?
+    currently_occupied: Optional[bool] = None  # Are they living in the property?
     notes: Optional[str] = None
     
     # Convert empty strings to None for numeric fields
@@ -217,8 +223,26 @@ class CreateSellerLeadRequest(BaseModel):
                 return None
         return v
     
+    # Convert empty strings to None for boolean fields
+    @field_validator('previously_listed', 'currently_occupied', mode='before')
+    @classmethod
+    def empty_str_to_none_bool(cls, v):
+        """Convert empty strings and whitespace to None before boolean validation"""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "":
+                return None
+            # Try to convert string booleans to actual booleans
+            if v.lower() in ('true', 'yes', '1'):
+                return True
+            if v.lower() in ('false', 'no', '0'):
+                return False
+        return v
+    
     # Strip whitespace from string fields
-    @field_validator('email', 'property_type', 'reason_for_selling', 'timeframe', 'notes', mode='before')
+    @field_validator('email', 'property_type', 'reason_for_selling', 'timeframe', 'property_condition', 'notes', mode='before')
     @classmethod
     def strip_strings(cls, v):
         """Strip whitespace and convert empty strings to None"""
