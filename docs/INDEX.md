@@ -22,8 +22,7 @@ Essential configuration documentation:
 
 | Document | Description |
 |----------|-------------|
-| [ENV_CONFIGURATION.md](configuration/ENV_CONFIGURATION.md) | Complete environment variables reference |
-| [ENV_REFERENCE.md](configuration/ENV_REFERENCE.md) | Quick reference for key configuration values |
+
 | [SETTINGS_REFACTOR.md](configuration/SETTINGS_REFACTOR.md) | How configuration system works |
 | [TEST_MODE_CONFIGURATION.md](configuration/TEST_MODE_CONFIGURATION.md) | Test mode setup and usage |
 
