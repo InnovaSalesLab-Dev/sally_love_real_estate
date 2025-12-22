@@ -1,7 +1,8 @@
 """
 Function: Check Property
-Searches and retrieves property details from BoldTrail CRM MLS Listings Feed
-Uses the XML feed endpoint to access all active MLS listings (not just manual listings)
+Searches and retrieves property details from BoldTrail CRM
+Searches both MLS listings (XML feed) and manual listings (API endpoint)
+Uses fallback strategy: XML feed first, then manual listings if no results found
 """
 
 from fastapi import APIRouter, HTTPException
@@ -21,18 +22,22 @@ crm_client = BoldTrailClient()
 @router.post("/check_property")
 async def check_property(request: CheckPropertyRequest) -> VapiResponse:
     """
-    Search for properties in BoldTrail CRM from MLS listings feed based on criteria
+    Search for properties in BoldTrail CRM from multiple sources
     
-    This function searches the full MLS listings feed (via XML feed) which includes
-    all active listings, not just manually created ones. It allows the voice agent 
-    to search for properties by:
+    This function searches properties in this order:
+    1. First: MLS listings feed (via XML feed) - includes all active MLS listings
+    2. Fallback: Manual listings (via API) - includes properties manually added to BoldTrail
+    
+    Search criteria:
     - Address, city, state, zip code
     - MLS number
     - Property type, price range, bedrooms, bathrooms
     
     Returns property details including availability, price, and features.
     
-    Uses BoldTrail XML Feed: https://api.kvcore.com/export/listings/{ZAPIER_KEY}/10
+    Data sources:
+    - XML Feed: https://api.kvcore.com/export/listings/{ZAPIER_KEY}/10
+    - Manual Listings: GET /v2/public/manuallistings
     """
     try:
         logger.info(f"Checking property with params: {request.model_dump()}")
@@ -74,6 +79,26 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
             status="active",  # Only show active/available listings
             limit=5  # Return top 5 matches
         )
+        
+        # Fallback: If no results from XML feed, try manual listings
+        if not properties:
+            logger.info("No properties found in XML feed, trying manual listings...")
+            properties = await crm_client.search_manual_listings(
+                address=request.address,
+                city=request.city,
+                state=request.state or "FL",
+                zip_code=request.zip_code,
+                property_type=request.property_type,
+                min_price=request.min_price,
+                max_price=request.max_price,
+                bedrooms=request.bedrooms,
+                bathrooms=request.bathrooms,
+                status="active",
+                limit=5
+            )
+            
+            if properties:
+                logger.info(f"Found {len(properties)} properties in manual listings")
         
         if not properties:
             return VapiResponse(

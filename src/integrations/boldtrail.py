@@ -850,6 +850,150 @@ class BoldTrailClient:
                 .replace("court", "ct")
                 .strip())
     
+    async def search_manual_listings(
+        self,
+        address: Optional[str] = None,
+        city: Optional[str] = None,
+        state: Optional[str] = None,
+        zip_code: Optional[str] = None,
+        property_type: Optional[str] = None,
+        min_price: Optional[float] = None,
+        max_price: Optional[float] = None,
+        bedrooms: Optional[int] = None,
+        bathrooms: Optional[float] = None,
+        status: Optional[str] = "active",
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Search manual listings from BoldTrail API endpoint
+        
+        Uses: GET /v2/public/manuallistings
+        Reference: https://developer.insiderealestate.com/publicv2/reference/get_v2-public-manuallistings
+        
+        This searches properties that are manually added to BoldTrail,
+        which may not be in the MLS XML feed.
+        
+        Args:
+            address: Address to search for
+            city: City filter
+            state: State filter
+            zip_code: ZIP code filter
+            property_type: Property type filter
+            min_price: Minimum price
+            max_price: Maximum price
+            bedrooms: Minimum number of bedrooms
+            bathrooms: Minimum number of bathrooms
+            status: Listing status (active, pending, sold, etc.)
+            limit: Maximum results to return
+            
+        Returns:
+            List of matching manual listings
+        """
+        logger.info(f"Searching manual listings with address={address}, city={city}")
+        
+        # Build query parameters
+        params = {}
+        
+        # API supports filtering by status
+        if status:
+            params["status"] = status
+        
+        # Get all manual listings (API has limited filtering options)
+        result = await self._make_request("GET", "manuallistings", params=params)
+        
+        # Extract listings from response
+        listings = result.get("data", []) if isinstance(result, dict) else []
+        
+        if not listings:
+            logger.info("No manual listings found")
+            return []
+        
+        logger.info(f"Retrieved {len(listings)} manual listings, applying filters")
+        
+        # Apply filters in code (API has limited query parameter support)
+        matches = []
+        
+        for listing in listings:
+            # Address filter (case-insensitive partial match)
+            if address:
+                listing_addr = str(listing.get("address", "")).lower()
+                search_addr = address.lower()
+                if search_addr not in listing_addr and listing_addr not in search_addr:
+                    continue
+            
+            # City filter (case-insensitive)
+            if city:
+                listing_city = str(listing.get("city", "")).lower()
+                if city.lower() != listing_city:
+                    continue
+            
+            # State filter (case-insensitive)
+            if state:
+                listing_state = str(listing.get("state", "")).lower()
+                if state.lower() != listing_state:
+                    continue
+            
+            # ZIP filter
+            if zip_code:
+                listing_zip = str(listing.get("zipCode", "")) or str(listing.get("zip_code", ""))
+                if zip_code != listing_zip:
+                    continue
+            
+            # Property type filter (case-insensitive partial match)
+            if property_type:
+                listing_type = str(listing.get("propertyType", "")).lower()
+                if property_type.lower() not in listing_type:
+                    continue
+            
+            # Price filters
+            price = float(listing.get("price", 0) or 0)
+            if min_price and price < min_price:
+                continue
+            if max_price and price > max_price:
+                continue
+            
+            # Bedrooms filter (minimum)
+            if bedrooms is not None:
+                listing_beds = int(listing.get("bedrooms", 0) or 0)
+                if listing_beds < bedrooms:
+                    continue
+            
+            # Bathrooms filter (minimum)
+            if bathrooms is not None:
+                listing_baths = float(listing.get("bathrooms", 0) or 0)
+                if listing_baths < bathrooms:
+                    continue
+            
+            # Normalize listing data to match XML feed format
+            normalized = {
+                "address": listing.get("address", ""),
+                "city": listing.get("city", ""),
+                "state": listing.get("state", ""),
+                "zip": listing.get("zipCode") or listing.get("zip_code", ""),
+                "zipCode": listing.get("zipCode") or listing.get("zip_code", ""),
+                "mlsNumber": listing.get("mlsNumber") or listing.get("mls_number", "N/A"),
+                "mls_number": listing.get("mlsNumber") or listing.get("mls_number", "N/A"),
+                "price": price,
+                "status": listing.get("status", "active"),
+                "listDate": listing.get("listDate") or listing.get("list_date", ""),
+                "bedrooms": int(listing.get("bedrooms", 0) or 0),
+                "bathrooms": float(listing.get("bathrooms", 0) or 0),
+                "squareFeet": int(listing.get("squareFeet", 0) or listing.get("square_feet", 0) or 0),
+                "propertyType": listing.get("propertyType") or listing.get("property_type", ""),
+                "description": listing.get("description", ""),
+                "agentName": listing.get("agentName", ""),
+                "agentPhone": listing.get("agentPhone", ""),
+                "agentEmail": listing.get("agentEmail", ""),
+                "source": "manual_listing"  # Flag to indicate this came from manual listings
+            }
+            
+            matches.append(normalized)
+        
+        logger.info(f"Found {len(matches)} manual listings matching criteria")
+        
+        # Limit results
+        return matches[:limit]
+    
     async def search_listings_from_xml(
         self,
         address: Optional[str] = None,

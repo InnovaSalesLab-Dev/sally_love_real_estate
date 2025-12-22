@@ -36,6 +36,9 @@ Documentation for specific features:
 | Document | Description |
 |----------|-------------|
 | [OPTION_A_IMPLEMENTATION.md](features/OPTION_A_IMPLEMENTATION.md) | Lead notifications & fallback routing implementation |
+| [MANUAL_LISTINGS_FALLBACK.md](features/MANUAL_LISTINGS_FALLBACK.md) | Manual listings fallback feature documentation |
+| [MANUAL_LISTINGS_DEPLOYMENT_SUMMARY.md](features/MANUAL_LISTINGS_DEPLOYMENT_SUMMARY.md) | Manual listings deployment summary and testing guide |
+| [MANUAL_LISTINGS_IMPLEMENTATION_COMPLETE.md](features/MANUAL_LISTINGS_IMPLEMENTATION_COMPLETE.md) | Complete manual listings implementation summary |
 | [CLIENT_REQUIREMENTS_AUDIT.md](features/CLIENT_REQUIREMENTS_AUDIT.md) | Client requirements checklist and status |
 | [TEST_1_FIXES_SUMMARY.md](features/TEST_1_FIXES_SUMMARY.md) | Test case fixes and improvements |
 
@@ -64,7 +67,34 @@ Developer reference documentation:
 |----------|-------------|
 | [ROUTE_TO_AGENT_GUIDE.md](technical/ROUTE_TO_AGENT_GUIDE.md) | Call transfer implementation guide |
 | [BoldTrail_API_V2_Endpoints.md](technical/BoldTrail_API_V2_Endpoints.md) | BoldTrail CRM API reference |
+| [XML_FEED_VERIFICATION.md](technical/XML_FEED_VERIFICATION.md) | XML feed parameter explanation and verification |
 | [VIEWING_LOGS.md](technical/VIEWING_LOGS.md) | How to view and analyze logs |
+
+---
+
+## 🔗 Webhooks & Integrations
+
+Webhook setup and integration guides:
+
+| Document | Description |
+|----------|-------------|
+| [GHL_FORM_WEBHOOK_SETUP.md](webhooks/GHL_FORM_WEBHOOK_SETUP.md) | **Setup guide: GHL form → Vapi outbound call** ⭐ |
+| [GHL_FORM_WEBHOOK_IMPLEMENTATION.md](webhooks/GHL_FORM_WEBHOOK_IMPLEMENTATION.md) | **Implementation summary & technical details** ⭐ |
+| [GHL_WEBHOOK_SETUP.md](webhooks/GHL_WEBHOOK_SETUP.md) | GoHighLevel webhook general reference |
+| [GHL_WEBHOOK_QUICKSTART.md](../GHL_WEBHOOK_QUICKSTART.md) | Quick start for GHL webhook configuration |
+
+---
+
+## 🧪 Testing & Validation
+
+Testing tools and validation guides:
+
+| Document | Description |
+|----------|-------------|
+| [XML_FEED_VALIDATOR_READY.md](testing/XML_FEED_VALIDATOR_READY.md) | Quick start guide for XML feed validator |
+| [README_XML_VALIDATION.md](testing/README_XML_VALIDATION.md) | Complete XML feed validation documentation |
+| [README_TESTING.md](../scripts/README_TESTING.md) | General testing guide (in scripts folder) |
+| [validate_xml_feed.py](../tests/validate_xml_feed.py) | XML feed validation script |
 
 ---
 
@@ -96,6 +126,9 @@ docs/
 │
 ├── features/
 │   ├── OPTION_A_IMPLEMENTATION.md
+│   ├── MANUAL_LISTINGS_FALLBACK.md
+│   ├── MANUAL_LISTINGS_DEPLOYMENT_SUMMARY.md
+│   ├── MANUAL_LISTINGS_IMPLEMENTATION_COMPLETE.md
 │   ├── CLIENT_REQUIREMENTS_AUDIT.md
 │   └── TEST_1_FIXES_SUMMARY.md
 │
@@ -110,7 +143,17 @@ docs/
 ├── technical/
 │   ├── ROUTE_TO_AGENT_GUIDE.md
 │   ├── BoldTrail_API_V2_Endpoints.md
+│   ├── XML_FEED_VERIFICATION.md
 │   └── VIEWING_LOGS.md
+│
+├── testing/
+│   ├── XML_FEED_VALIDATOR_READY.md
+│   └── README_XML_VALIDATION.md
+│
+├── webhooks/
+│   ├── GHL_FORM_WEBHOOK_SETUP.md ⭐
+│   ├── GHL_FORM_WEBHOOK_IMPLEMENTATION.md ⭐
+│   └── GHL_WEBHOOK_SETUP.md
 │
 └── deployment/
     └── DEPLOY_INSTRUCTIONS.md
@@ -129,8 +172,12 @@ docs/
 - **Update the AI agent behavior** → [VAPI_SYSTEM_PROMPT_2.md](vapi/VAPI_SYSTEM_PROMPT_2.md) + [VAPI_KNOWLEDGE_BASE.md](vapi/VAPI_KNOWLEDGE_BASE.md)
 - **Deploy to production** → [DEPLOY_INSTRUCTIONS.md](deployment/DEPLOY_INSTRUCTIONS.md)
 - **Test the system** → [README_TESTING.md](../scripts/README_TESTING.md)
+- **Validate XML feed** → [XML_FEED_VALIDATOR_READY.md](testing/XML_FEED_VALIDATOR_READY.md)
+- **Setup GHL form webhook** → [GHL_FORM_WEBHOOK_SETUP.md](webhooks/GHL_FORM_WEBHOOK_SETUP.md)
+- **Setup GHL webhook (general)** → [GHL_WEBHOOK_SETUP.md](webhooks/GHL_WEBHOOK_SETUP.md)
 - **Enable test mode** → [TEST_MODE_CONFIGURATION.md](configuration/TEST_MODE_CONFIGURATION.md)
 - **Understand lead notifications** → [OPTION_A_IMPLEMENTATION.md](features/OPTION_A_IMPLEMENTATION.md)
+- **Understand property search** → [MANUAL_LISTINGS_FALLBACK.md](features/MANUAL_LISTINGS_FALLBACK.md)
 - **Check what's implemented** → [CLIENT_REQUIREMENTS_AUDIT.md](features/CLIENT_REQUIREMENTS_AUDIT.md)
 - **Debug call transfers** → [ROUTE_TO_AGENT_GUIDE.md](technical/ROUTE_TO_AGENT_GUIDE.md)
 - **View logs** → [VIEWING_LOGS.md](technical/VIEWING_LOGS.md)
@@ -144,6 +191,8 @@ docs/
 - ✅ vapi/VAPI_KNOWLEDGE_BASE.md
 - ✅ configuration/ENV_CONFIGURATION.md
 - ✅ features/OPTION_A_IMPLEMENTATION.md
+- ✅ features/MANUAL_LISTINGS_IMPLEMENTATION_COMPLETE.md
+- ✅ testing/XML_FEED_VALIDATOR_READY.md
 - ✅ configuration/TEST_MODE_CONFIGURATION.md
 
 ### Reference (Keep for History)

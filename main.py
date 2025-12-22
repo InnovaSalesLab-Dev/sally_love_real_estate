@@ -24,6 +24,7 @@ from src.functions.send_notification import router as send_notification_router
 # Import webhook handlers
 from src.webhooks.vapi_webhooks import router as vapi_webhooks_router
 from src.webhooks.crm_webhooks import router as crm_webhooks_router
+from src.webhooks.ghl_webhooks import router as ghl_webhooks_router
 
 # Setup logging
 setup_logger()
@@ -143,6 +144,7 @@ app.include_router(send_notification_router, prefix="/functions", tags=["Functio
 # Include webhook routers
 app.include_router(vapi_webhooks_router, prefix="/webhooks/vapi", tags=["Webhooks"])
 app.include_router(crm_webhooks_router, prefix="/webhooks/crm", tags=["Webhooks"])
+app.include_router(ghl_webhooks_router, prefix="/webhooks/ghl", tags=["Webhooks - GoHighLevel"])
 
 
 if __name__ == "__main__":

@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     VAPI_API_KEY: str  # Must be set in .env
     VAPI_PHONE_NUMBER_ID: Optional[str] = None  # Optional
     VAPI_API_URL: str = "https://api.vapi.ai"  # Static - never changes
+    VAPI_ASSISTANT_ID: str = ""  # Required if using GHL webhooks - your Vapi assistant ID
+
     
     # BoldTrail CRM Configuration
     BOLDTRAIL_API_KEY: str  # Must be set in .env
@@ -59,6 +61,9 @@ class Settings(BaseSettings):
     TEST_MODE: bool  # Must be set in .env
     TEST_AGENT_NAME: str  # Must be set in .env
     TEST_AGENT_PHONE: str  # Must be set in .env
+    
+    # Vapi Assistant ID for GHL webhooks
+    VAPI_ASSISTANT_ID: str = ""  # Optional - required for GHL form webhook to trigger outbound calls
     
     # Logging
     LOG_LEVEL: str  # Must be set in .env

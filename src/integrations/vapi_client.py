@@ -178,4 +178,61 @@ class VapiClient:
         """
         logger.info(f"Ending call: {call_id}")
         return await self._make_request("DELETE", f"call/{call_id}")
+    
+    async def create_outbound_call(
+        self,
+        phone_number: str,
+        assistant_id: str,
+        customer_name: Optional[str] = None,
+        customer_email: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create an outbound call with simplified parameters (convenience method).
+        
+        This is a convenience wrapper around create_phone_call that formats
+        the call configuration for outbound calls.
+        
+        Args:
+            phone_number: Customer's phone number (E.164 format, e.g., +1234567890)
+            assistant_id: Vapi assistant ID to use for the call
+            customer_name: Customer's name (optional)
+            customer_email: Customer's email (optional)
+            metadata: Additional metadata to attach to the call (optional)
+            
+        Returns:
+            Call data from Vapi API
+            
+        Example:
+            >>> call = await vapi_client.create_outbound_call(
+            ...     phone_number="+13525551234",
+            ...     assistant_id="asst_abc123",
+            ...     customer_name="John Doe",
+            ...     customer_email="john@example.com",
+            ...     metadata={"source": "ghl_form", "property_interest": "1738 Augustine Dr"}
+            ... )
+        """
+        call_config = {
+            "assistantId": assistant_id,
+            "customer": {
+                "number": phone_number,
+            }
+        }
+        
+        # Add phone number ID if configured (for outbound calls)
+        if settings.VAPI_PHONE_NUMBER_ID:
+            call_config["phoneNumberId"] = settings.VAPI_PHONE_NUMBER_ID
+        
+        # Add optional customer information
+        if customer_name:
+            call_config["customer"]["name"] = customer_name
+        if customer_email:
+            call_config["customer"]["email"] = customer_email
+        
+        # Add metadata if provided
+        if metadata:
+            call_config["metadata"] = metadata
+        
+        logger.info(f"Initiating outbound call to {phone_number} (name: {customer_name})")
+        return await self.create_phone_call(call_config)
 
