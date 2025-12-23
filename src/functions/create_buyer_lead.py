@@ -37,6 +37,11 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
     """
     try:
         logger.info(f"Creating buyer lead: {request.first_name} {request.last_name}")
+
+        # Normalize placeholder last names commonly produced by LLMs
+        normalized_last_name = (request.last_name or "").strip()
+        if normalized_last_name.lower() in {"-", "n/a", "na", "none", "null", "unknown"}:
+            normalized_last_name = ""
         
         # Validate and format phone
         try:
@@ -57,7 +62,7 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
         # Create contact object
         contact = Contact(
             first_name=request.first_name,
-            last_name=request.last_name or "",  # Handle None/empty
+            last_name=normalized_last_name,  # Handle None/empty + normalize placeholders
             phone=phone,
             email=email,
             contact_type=ContactType.BUYER,

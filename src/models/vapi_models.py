@@ -118,10 +118,12 @@ class GetAgentInfoRequest(BaseModel):
 
 class RouteToAgentRequest(BaseModel):
     """Request model for route_to_agent function"""
-    agent_id: str
+    lead_id: str
+    agent_id: Optional[str] = None
     agent_name: str
     agent_phone: str
-    caller_name: Optional[str] = None
+    caller_name: str
+    caller_phone: str
     reason: Optional[str] = None
 
 
