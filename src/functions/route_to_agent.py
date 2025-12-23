@@ -73,6 +73,9 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
     
     Reference: https://docs.vapi.ai/calls/call-dynamic-transfers
     """
+    # Initialize control_url before try block to avoid NameError in exception handlers
+    control_url = None
+    
     try:
         # Parse the request body - Vapi sends webhook format
         body = await request.json()
@@ -84,46 +87,55 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
         logger.info(f"Full payload: {json.dumps(body, indent=2)}")
         logger.info("="*80)
         
-        # Extract control URL from Vapi webhook format
-        # Format: message.call.monitor.controlUrl
+        # Extract control URL from the call monitor (Official Vapi pattern)
+        # Reference: https://docs.vapi.ai/calls/call-dynamic-transfers
         message = body.get("message", {})
-        call = message.get("call", {})
-        monitor = call.get("monitor", {})
-        control_url = monitor.get("controlUrl")
+        control_url = message.get("call", {}).get("monitor", {}).get("controlUrl")
         
-        # Extract tool call parameters
-        # Format: message.toolWithToolCallList[0].toolCall.function.arguments
+        # Extract tool call from toolWithToolCallList (Official Vapi pattern)
+        # Bug fix: Check if list has items before accessing [0] to avoid IndexError
         tool_with_tool_call_list = message.get("toolWithToolCallList", [])
-        
         if not tool_with_tool_call_list:
-            # Fallback: Try direct parameters (backward compatibility)
-            params = body.get("parameters", body)
-            agent_id = params.get("agent_id", "")
-            agent_name = params.get("agent_name", "")
-            agent_phone = params.get("agent_phone", "")
-            caller_name = params.get("caller_name")
-            reason = params.get("reason")
-        else:
-            # Extract from tool call arguments
-            tool_call = tool_with_tool_call_list[0].get("toolCall", {})
-            arguments = tool_call.get("function", {}).get("arguments", {})
-            
-            # Handle both string (JSON) and dict arguments
-            if isinstance(arguments, str):
-                try:
-                    arguments = json.loads(arguments)
-                except json.JSONDecodeError:
-                    logger.error(f"Failed to parse arguments JSON: {arguments}")
-                    arguments = {}
-            
-            agent_id = arguments.get("agent_id", "")
-            agent_name = arguments.get("agent_name", "")
-            agent_phone = arguments.get("agent_phone", "")
-            caller_name = arguments.get("caller_name")
-            reason = arguments.get("reason")
+            logger.error("toolWithToolCallList is empty or missing")
+            return VapiResponse(
+                success=False,
+                error="Missing required webhook data",
+                message="I'm unable to transfer the call right now. Let me take your information and have an agent call you back.",
+            )
+        
+        tool_with_tool_call = tool_with_tool_call_list[0]
+        tool_call = tool_with_tool_call.get("toolCall", {})
+        
+        logger.info(f"controlUrl present: {bool(control_url)}")
+        logger.info(f"toolCall present: {bool(tool_call)}")
+        
+        if not control_url or not tool_call:
+            logger.error("Missing required data - controlUrl or toolCall not found")
+            logger.error("This usually means the tool was not created with async: true")
+            return VapiResponse(
+                success=False,
+                error="Missing required webhook data",
+                message="I'm unable to transfer the call right now. Let me take your information and have an agent call you back.",
+            )
+        
+        # Extract parameters from the tool call
+        arguments = tool_call.get("function", {}).get("arguments", {})
+        
+        # Handle both string (JSON) and dict arguments
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse arguments JSON: {arguments}")
+                arguments = {}
+        
+        agent_id = arguments.get("agent_id", "")
+        agent_name = arguments.get("agent_name", "")
+        agent_phone = arguments.get("agent_phone", "")
+        caller_name = arguments.get("caller_name")
+        reason = arguments.get("reason")
         
         logger.info(f"Routing call to agent: {agent_name} ({agent_phone})")
-        logger.info(f"controlUrl present: {bool(control_url)}")
         
         if not agent_phone:
             return VapiResponse(
@@ -183,19 +195,38 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
         caller_name_display = caller_name or "a caller"
         transfer_message = f"Transferring you to {agent_name} now. Please hold."
         
-        # Return transfer instruction - Vapi handles the actual transfer
+        # Execute transfer via Live Call Control (Official Vapi Pattern)
         # Reference: https://docs.vapi.ai/calls/call-dynamic-transfers
-        # IMPORTANT: Vapi expects destination at ROOT LEVEL, not nested in data.transfer
-        logger.info(f"Returning transfer instruction for {agent_name} at {agent_phone}")
+        logger.info(f"Executing transfer to {agent_name} at {agent_phone}")
         
-        # Return dict with destination at root level (Vapi's expected format)
-        return {
-            "destination": {
-                "type": "number",
-                "number": agent_phone,
-                "message": transfer_message
-            }
+        destination = {
+            "type": "number",
+            "number": agent_phone
         }
+        
+        # POST to controlUrl/control to execute the transfer
+        # Official Vapi docs: POST to controlUrl/control
+        control_endpoint = f"{control_url.rstrip('/')}/control"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            transfer_response = await client.post(
+                control_endpoint,
+                json={
+                    "type": "transfer",
+                    "destination": destination,
+                    "content": transfer_message
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if transfer_response.status_code == 200:
+                logger.info(f"✅ Transfer executed successfully to {agent_name} ({agent_phone})")
+                return VapiResponse(
+                    success=True,
+                    message=f"Transfer to {agent_name} initiated successfully"
+                )
+            else:
+                logger.error(f"❌ Transfer failed. Status: {transfer_response.status_code}, Response: {transfer_response.text}")
+                raise Exception(f"Transfer API returned {transfer_response.status_code}")
         
     except BoldTrailError as e:
         logger.error(f"BoldTrail error in route_to_agent: {e.message}")
@@ -222,20 +253,31 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
                 caller_name = params.get("caller_name")
                 reason = params.get("reason")
             
-            if agent_phone:
+            if agent_phone and control_url:
                 # Format phone
                 if not agent_phone.startswith("+"):
                     cleaned_phone = ''.join(filter(str.isdigit, agent_phone))
                     agent_phone = f"+1{cleaned_phone}" if len(cleaned_phone) == 10 else f"+{cleaned_phone}"
                 
-                # Return transfer instruction despite CRM error (destination at root level)
-                return {
-                    "destination": {
-                        "type": "number",
-                        "number": agent_phone,
-                        "message": f"Transferring you to {agent_name} now."
-                    }
-                }
+                 # Execute transfer despite CRM error
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        transfer_payload = {
+                            "type": "transfer",
+                            "destination": {
+                                "type": "number",
+                                "number": agent_phone
+                            },
+                            "content": f"Transferring you to {agent_name} now."
+                        }
+                        # Official Vapi docs: POST to controlUrl/control
+                        control_endpoint = f"{control_url.rstrip('/')}/control"
+                        response = await client.post(control_endpoint, json=transfer_payload)
+                        if response.status_code == 200:
+                            logger.info(f"✅ Transfer executed (despite CRM error) to {agent_phone}")
+                            return VapiResponse(success=True, message="Transfer initiated")
+                except Exception as e:
+                    logger.error(f"Transfer execution failed: {str(e)}")
         except Exception as transfer_error:
             logger.error(f"Transfer preparation also failed: {str(transfer_error)}")
         
@@ -249,15 +291,26 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
         
         # Try fallback to office line
         fallback_phone = settings.TEST_AGENT_PHONE if settings.TEST_MODE else settings.OFFICE_NOTIFICATION_PHONE
-        if fallback_phone:
+        if fallback_phone and control_url:
             logger.info(f"Attempting fallback transfer to office line: {fallback_phone}")
-            return {
-                "destination": {
-                    "type": "number",
-                    "number": fallback_phone,
-                    "message": "I'm connecting you to our office now. Please hold."
-                }
-            }
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    transfer_payload = {
+                        "type": "transfer",
+                        "destination": {
+                            "type": "number",
+                            "number": fallback_phone
+                        },
+                        "content": "I'm connecting you to our office now. Please hold."
+                    }
+                    # Official Vapi docs: POST to controlUrl/control
+                    control_endpoint = f"{control_url.rstrip('/')}/control"
+                    response = await client.post(control_endpoint, json=transfer_payload)
+                    if response.status_code == 200:
+                        logger.info(f"✅ Fallback transfer executed to {fallback_phone}")
+                        return VapiResponse(success=True, message="Fallback transfer initiated")
+            except Exception as e:
+                logger.error(f"Fallback transfer failed: {str(e)}")
         
         return VapiResponse(
             success=False,
@@ -301,15 +354,26 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
         
         # Try fallback to office line
         fallback_phone = settings.TEST_AGENT_PHONE if settings.TEST_MODE else settings.OFFICE_NOTIFICATION_PHONE
-        if fallback_phone:
+        if fallback_phone and control_url:
             logger.info(f"Attempting fallback transfer to office line: {fallback_phone}")
-            return {
-                "destination": {
-                    "type": "number",
-                    "number": fallback_phone,
-                    "message": "I'm connecting you to our office now. Please hold."
-                }
-            }
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    transfer_payload = {
+                        "type": "transfer",
+                        "destination": {
+                            "type": "number",
+                            "number": fallback_phone
+                        },
+                        "content": "I'm connecting you to our office now. Please hold."
+                    }
+                    # Official Vapi docs: POST to controlUrl/control
+                    control_endpoint = f"{control_url.rstrip('/')}/control"
+                    response = await client.post(control_endpoint, json=transfer_payload)
+                    if response.status_code == 200:
+                        logger.info(f"✅ Fallback transfer executed to {fallback_phone}")
+                        return VapiResponse(success=True, message="Fallback transfer initiated")
+            except Exception as e:
+                logger.error(f"Fallback transfer failed: {str(e)}")
         
         return VapiResponse(
             success=False,
