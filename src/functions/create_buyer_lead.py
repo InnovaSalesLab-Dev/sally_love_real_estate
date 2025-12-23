@@ -258,11 +258,21 @@ async def create_buyer_lead(request: CreateBuyerLeadRequest) -> VapiResponse:
         # Handle duplicate email/phone gracefully
         if "already exists" in e.message.lower() or "duplicate" in e.message.lower():
             logger.info("Duplicate contact detected, attempting to handle gracefully")
+            # Attempt to retrieve the existing contact id so downstream tools can still reference it.
+            existing_contact_id = None
+            try:
+                existing_contacts = await crm_client.search_contacts(phone=phone, email=email)
+                if existing_contacts:
+                    existing_contact_id = existing_contacts[0].get("id")
+                    logger.info(f"Resolved duplicate to existing contact_id: {existing_contact_id}")
+            except Exception as lookup_error:
+                logger.warning(f"Failed to lookup existing contact after duplicate error: {str(lookup_error)}")
+
             return VapiResponse(
                 success=True,
                 message=f"Perfect, {request.first_name}! We have your information on file. Sally or one of our agents will call you to discuss available properties. You'll also get a text.",
                 data={
-                    "contact_id": None,
+                    "contact_id": existing_contact_id,
                     "note": "Duplicate contact - existing record in CRM"
                 }
             )

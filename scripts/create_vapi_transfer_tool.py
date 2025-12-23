@@ -37,6 +37,10 @@ def create_transfer_tool():
                         "type": "string",
                         "description": "Reason for the transfer (e.g., 'property inquiry', 'general inquiry')"
                     },
+                    "lead_id": {
+                        "type": "string",
+                        "description": "CRM contact/lead id returned by create_buyer_lead or create_seller_lead (use data.contact_id)"
+                    },
                     "agent_id": {
                         "type": "string",
                         "description": "The BoldTrail CRM ID of the agent"
@@ -47,14 +51,18 @@ def create_transfer_tool():
                     },
                     "agent_phone": {
                         "type": "string",
-                        "description": "The phone number of the agent in E.164 format (e.g., +13525551234)"
+                        "description": "The phone number of the agent in E.164 format (e.g., +13523992010)"
                     },
                     "caller_name": {
                         "type": "string",
                         "description": "The name of the caller requesting the transfer"
+                    },
+                    "caller_phone": {
+                        "type": "string",
+                        "description": "The caller's phone number (E.164 preferred). Must be collected before transfer."
                     }
                 },
-                "required": ["agent_phone", "agent_name"]
+                "required": ["agent_phone", "agent_name", "lead_id", "caller_name", "caller_phone"]
             }
         },
         "server": {

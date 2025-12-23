@@ -133,9 +133,27 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
         agent_name = arguments.get("agent_name", "")
         agent_phone = arguments.get("agent_phone", "")
         caller_name = arguments.get("caller_name")
+        caller_phone = arguments.get("caller_phone")
+        lead_id = arguments.get("lead_id")
         reason = arguments.get("reason")
         
         logger.info(f"Routing call to agent: {agent_name} ({agent_phone})")
+
+        # Enforce Lead-Before-Transfer: do not transfer unless we have a CRM contact/lead id
+        # and basic caller contact info for agent context.
+        if not lead_id or not caller_name or not caller_phone:
+            logger.warning(
+                "Transfer gate blocked: missing lead_id and/or caller contact info "
+                f"(lead_id={bool(lead_id)}, caller_name={bool(caller_name)}, caller_phone={bool(caller_phone)})"
+            )
+            return VapiResponse(
+                success=False,
+                error="Missing required lead/contact information",
+                message=(
+                    "Before I connect you, can I get your name and the best callback number? "
+                    "That way the agent has your details in case they miss you."
+                ),
+            )
         
         if not agent_phone:
             return VapiResponse(
