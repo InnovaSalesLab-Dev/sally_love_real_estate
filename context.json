@@ -1,0 +1,169 @@
+{
+  "project": {
+    "name": "sally-love-voice-agent",
+    "purpose": "FastAPI backend for a Vapi voice agent that handles real-estate calls: property lookup, lead creation, notifications, and live call transfers.",
+    "owner": "Sally Love Real Estate",
+    "last_updated": "2026-01-06"
+  },
+  "arch": {
+    "stack": [
+      "Python 3.11+",
+      "FastAPI 0.115+",
+      "Pydantic v2 + pydantic-settings",
+      "httpx (AsyncClient)",
+      "Vapi AI Platform (voice agent + function tools + dynamic transfers)",
+      "BoldTrail (kvCORE) CRM API + XML listings feed",
+      "Twilio SMS",
+      "Fly.io deployment"
+    ],
+    "repo_structure": {
+      "main.py": "FastAPI app entrypoint. Includes routers for tools and webhooks. Central exception handling.",
+      "src/functions/": "Vapi tool endpoints (thin controllers): validate input, call integrations/services, return VapiResponse.",
+      "src/integrations/": "External API clients (BoldTrail, Vapi, Twilio, MLS). Network calls live here.",
+      "src/models/": "Pydantic request/response models for tool inputs and Vapi payloads.",
+      "src/utils/": "Cross-cutting helpers (logging, validators, errors, speech formatting).",
+      "src/webhooks/": "Webhook handlers for Vapi and other systems (CRM, GoHighLevel).",
+      "docs/vapi/": "Vapi agent KB + system prompts. KB is the single source of truth for agent behavior."
+    },
+    "patterns": [
+      "Async/await end-to-end for network I/O",
+      "Consistent response envelope via src/models/vapi_models.py (VapiResponse)",
+      "Centralized configuration via src/config/settings.py (Pydantic Settings)",
+      "Custom exception hierarchy in src/utils/errors.py",
+      "Voice-safe formatting via src/utils/speech_format.py (avoid robotic key/value and digit-by-digit speech)",
+      "Keep endpoints thin; move integration logic into src/integrations/"
+    ],
+    "decisions": [
+      {
+        "what": "Dynamic call transfers use Vapi Live Call Control API by POSTing to controlUrl/control",
+        "why": "Official Vapi pattern for real-time transfers and consistent call control semantics",
+        "when": "2026-01-01",
+        "refs": [
+          "https://docs.vapi.ai/calls/call-dynamic-transfers"
+        ]
+      },
+      {
+        "what": "Transfer Gate enforcement (lead before transfer)",
+        "why": "Prevent lost leads and ensure agents always receive caller context; avoids premature transfers",
+        "when": "2026-01-01",
+        "enforced_in": [
+          "src/functions/route_to_agent.py"
+        ]
+      },
+      {
+        "what": "Speech formatting is handled in code (not by the LLM) for addresses and prices",
+        "why": "Avoid digit-by-digit TTS and robotic readouts; keep speech natural and consistent",
+        "when": "2026-01-02",
+        "enforced_in": [
+          "src/utils/speech_format.py",
+          "src/functions/check_property.py"
+        ]
+      },
+      {
+        "what": "Knowledge Base is the single source of truth; system prompt is lightweight controller",
+        "why": "Lower latency and less duplication; easier to maintain consistent behavior",
+        "when": "2026-01-03",
+        "files": [
+          "docs/vapi/VAPI_KNOWLEDGE_BASE.md",
+          "docs/vapi/VAPI_SYSTEM_PROMPT_2.md"
+        ]
+      }
+    ]
+  },
+  "features": {
+    "vapi_tools": {
+      "state": "active",
+      "notes": "These are FastAPI endpoints called by Vapi as function tools (server.url points here).",
+      "files": [
+        "src/functions/check_property.py",
+        "src/functions/get_agent_info.py",
+        "src/functions/create_buyer_lead.py",
+        "src/functions/create_seller_lead.py",
+        "src/functions/send_notification.py",
+        "src/functions/route_to_agent.py"
+      ]
+    },
+    "vapi_webhooks": {
+      "state": "active",
+      "files": [
+        "src/webhooks/vapi_webhooks.py"
+      ],
+      "notes": "Receives call events and tool call webhooks; routes and logs."
+    },
+    "crm_integration": {
+      "state": "active",
+      "files": [
+        "src/integrations/boldtrail.py",
+        "src/models/crm_models.py"
+      ],
+      "notes": "Search listings via XML feed and manual listings API; create buyer/seller leads; retrieve agent info."
+    },
+    "sms_notifications": {
+      "state": "active",
+      "files": [
+        "src/integrations/twilio_client.py",
+        "src/functions/send_notification.py"
+      ],
+      "notes": "Sends lead notifications and failed-transfer alerts. TEST_MODE can override recipients."
+    },
+    "speech_formatting": {
+      "state": "active",
+      "files": [
+        "src/utils/speech_format.py"
+      ],
+      "notes": "Formats addresses/prices into speakable forms to prevent digit-by-digit TTS."
+    }
+  },
+  "env": {
+    "source": "src/config/settings.py",
+    "required": {
+      "ENVIRONMENT": "development|staging|production",
+      "HOST": "Server bind host",
+      "PORT": "Server bind port",
+      "WEBHOOK_BASE_URL": "Public base URL for webhook callbacks",
+      "VAPI_API_KEY": "Vapi API key",
+      "BOLDTRAIL_API_KEY": "BoldTrail (kvCORE) API key",
+      "BOLDTRAIL_ACCOUNT_ID": "BoldTrail account ID",
+      "BOLDTRAIL_ZAPIER_KEY": "Zapier key used for BoldTrail listing exports",
+      "TWILIO_ACCOUNT_SID": "Twilio Account SID",
+      "TWILIO_AUTH_TOKEN": "Twilio Auth Token",
+      "TWILIO_PHONE_NUMBER": "Twilio sending phone number",
+      "BUSINESS_NAME": "Business display name for the assistant",
+      "BUSINESS_PHONE": "Main office phone number (string; prefer E.164 in configs)",
+      "OFFICE_HOURS_START": "Office hours start (string)",
+      "OFFICE_HOURS_END": "Office hours end (string)",
+      "OFFICE_TIMEZONE": "Timezone identifier (e.g., America/New_York)",
+      "OFFICE_NOTIFICATION_PHONE": "Phone to receive lead/alert SMS",
+      "LEAD_NOTIFICATION_ENABLED": "true|false",
+      "TEST_MODE": "true|false",
+      "TEST_AGENT_NAME": "Name used for test transfers",
+      "TEST_AGENT_PHONE": "Phone used for test transfers",
+      "LOG_LEVEL": "debug|info|warning|error",
+      "LOG_FILE": "Path to logfile"
+    },
+    "optional": {
+      "VAPI_ASSISTANT_ID": "Assistant ID (used for some webhook flows)",
+      "VAPI_PHONE_NUMBER_ID": "Optional phone number ID",
+      "JEFF_NOTIFICATION_PHONE": "Optional alternate notification recipient",
+      "STELLAR_MLS_USERNAME": "Optional MLS integration",
+      "STELLAR_MLS_PASSWORD": "Optional MLS integration"
+    }
+  },
+  "quality": {
+    "tooling": "pyproject.toml",
+    "formatting": "black (line-length 100)",
+    "lint": "ruff (line-length 100)",
+    "tests": "pytest + pytest-asyncio (asyncio_mode=auto)"
+  },
+  "update_checklist": [
+    "If you add/remove a Vapi tool endpoint, update main.py router includes and this context.json features.files list.",
+    "If you change required tool parameters (Pydantic models), also update the Vapi tool schema (script or dashboard).",
+    "If you change agent behavior/policy, update docs/vapi/VAPI_KNOWLEDGE_BASE.md first; keep docs/vapi/VAPI_SYSTEM_PROMPT_2.md lightweight and non-redundant.",
+    "If you add env vars, update src/config/settings.py and context.json env.required/env.optional."
+  ],
+  "debt": [
+    "settings.py currently defines VAPI_ASSISTANT_ID twice; should be deduplicated.",
+    "Logging is stdlib logging; consider structured logging if/when needed (but keep logs PII-safe)."
+  ]
+}
+

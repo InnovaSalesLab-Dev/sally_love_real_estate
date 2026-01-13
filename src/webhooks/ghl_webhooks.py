@@ -10,6 +10,7 @@ from src.integrations.vapi_client import VapiClient
 from src.config.settings import settings
 import hmac
 import hashlib
+import json
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -78,11 +79,12 @@ async def handle_ghl_form_submission(
     }
     """
     try:
-        # Get raw body for signature verification
+        # Get raw body for signature verification (future use)
         body = await request.body()
-        payload = await request.json()
+        # Parse JSON from bytes (can't read request body twice in FastAPI)
+        payload = json.loads(body.decode('utf-8'))
         
-        logger.info(f"Received GHL inbound call webhook")
+        logger.info(f"Received GHL form submission webhook")
         logger.debug(f"Payload: {payload}")
         
         # Signature verification disabled (GHL_WEBHOOK_SECRET not configured)
@@ -114,6 +116,14 @@ async def handle_ghl_form_submission(
         if not user_phone:
             logger.error("Missing phone number in GHL form submission")
             raise HTTPException(status_code=400, detail="Missing phone number in form submission")
+        
+        # Validate VAPI_ASSISTANT_ID is configured
+        if not settings.VAPI_ASSISTANT_ID:
+            logger.error("VAPI_ASSISTANT_ID not configured - cannot initiate outbound call")
+            raise HTTPException(
+                status_code=500,
+                detail="VAPI_ASSISTANT_ID not configured. Please set VAPI_ASSISTANT_ID environment variable."
+            )
         
         logger.info(f"Form submitted by {contact_name} ({user_phone})")
         logger.info(f"Form data: {form_data}")
@@ -187,8 +197,10 @@ async def handle_ghl_call_status(
     }
     """
     try:
+        # Get raw body for signature verification (future use)
         body = await request.body()
-        payload = await request.json()
+        # Parse JSON from bytes (can't read request body twice in FastAPI)
+        payload = json.loads(body.decode('utf-8'))
         
         logger.info(f"Received GHL call status update")
         logger.debug(f"Payload: {payload}")

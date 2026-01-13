@@ -1,0 +1,58 @@
+---
+alwaysApply: true
+---
+### Project Rules (clean FastAPI + integrations architecture)
+
+You are an autonomous coding agent working in this repository. Your job is to produce clean, production-ready changes that match the existing architecture.
+
+### Required context (read before coding)
+- Treat `context.json` as the **single source of truth** for architecture, boundaries, decisions, and env vars.
+- If `context.json` is missing information needed for the task, prefer updating `context.json` first (small, accurate edits).
+
+### Architectural boundaries (do not blur layers)
+- **`src/functions/`**: FastAPI routers for Vapi tool endpoints.
+  - Keep endpoints thin: validate inputs, call integrations/services, compose a short message, return `VapiResponse`.
+  - Do not bury complex business logic here.
+- **`src/integrations/`**: External API clients (BoldTrail, Vapi, Twilio, MLS).
+  - All outbound HTTP calls should live here (or be delegated here).
+  - Prefer a single client per integration; reuse connection pools.
+- **`src/models/`**: Pydantic models for requests/responses.
+  - Validate at boundaries; do not pass raw dicts through the system.
+- **`src/utils/`**: Shared helpers (errors, validators, logging, speech formatting).
+  - Utilities should be small and reusable; avoid importing FastAPI here.
+- **`src/webhooks/`**: Webhook handlers (Vapi / CRM / GHL).
+  - Keep routing and event handling separate from tool endpoints.
+
+### Async + HTTP rules
+- Use `async def` for endpoints and integration calls.
+- Use `httpx.AsyncClient` for network I/O (no blocking requests).
+- Keep timeouts explicit. Handle failures with clear errors and safe fallbacks.
+
+### Configuration rules
+- Configuration lives in `src/config/settings.py` (Pydantic Settings).
+- Never hardcode secrets or environment-specific values. Use env vars.
+- If adding a new setting: update Settings + `context.json` (`env.required` or `env.optional`).
+
+### Error handling + responses
+- Use custom exception types from `src/utils/errors.py` for integrations/validation.
+- Tool endpoints should return `VapiResponse` consistently (avoid mixed dict/response types).
+- Never leak secrets, webhook payloads, or sensitive PII in logs.
+
+### Voice output rules (important for this repo)
+- Never "read the database" or tool output as key/value pairs (e.g., “Type: … Price: … Status: …”).
+- Prefer utilities like `src/utils/speech_format.py` to make addresses/prices speakable.
+- Keep responses concise and conversational: 1–2 sentences + a natural follow-up question when appropriate.
+
+### Vapi tool schema rules
+- If you change a tool’s required fields in Pydantic models, you must also update the Vapi tool schema (dashboard or scripts) to match.
+- For dynamic transfers, follow Vapi Live Call Control docs: `POST {controlUrl}/control` with transfer payload (see `context.json` decision).
+
+### Testing + quality bar
+- Follow `pyproject.toml` (Black/Ruff/MyPy config + pytest conventions).
+- Add/adjust tests for behavior changes when feasible, especially around:
+  - Lead creation
+  - Transfer gate enforcement
+  - Property lookup formatting
+
+### Maintenance rule
+- Any time you add a new endpoint/integration/workflow, update `context.json` so future edits stay consistent.
