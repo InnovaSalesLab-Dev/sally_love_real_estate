@@ -101,9 +101,21 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
                 logger.info(f"Found {len(properties)} properties in manual listings")
         
         if not properties:
+            # Check if we have enough location info to avoid asking for zip again
+            has_zip = bool(request.zip_code)
+            has_city = bool(request.city)
+            has_full_address = bool(request.address)
+            
+            if has_zip or (has_city and has_full_address):
+                # We have enough location info, don't ask for zip again
+                message = "No properties found matching your criteria. Would you like to adjust your search, or should I connect you with an agent who can help?"
+            else:
+                # Missing location info
+                message = "No properties found. Do you have the city and zip code, or an MLS number?"
+            
             return VapiResponse(
                 success=True,
-                message="No properties found matching your criteria. Would you like to adjust your search?",
+                message=message,
                 results=[]
             )
         

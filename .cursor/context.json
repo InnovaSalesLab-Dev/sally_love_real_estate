@@ -511,11 +511,87 @@
       "issue": "settings.py currently defines VAPI_ASSISTANT_ID twice (lines 29 and 66)",
       "status": "minor",
       "impact": "No functional impact (both point to same field), but should be deduplicated for clarity"
+    },
+    {
+      "issue": "Lead creation latency: 5-7 seconds (create_buyer_lead: 5.3s, create_seller_lead: 2.6s)",
+      "status": "resolved",
+      "impact": "Causes 'dead air' during voice calls - user waits 5-7 seconds after providing information",
+      "root_cause": "Sequential API calls: search_contacts (500-800ms) → create_lead (1000-2000ms) → log_call (500-800ms) → add_note (500-800ms) → send_sms x2 (400-800ms)",
+      "solution": "Implemented early return pattern: response returned immediately after contact creation, log_call/add_note/SMS moved to background tasks using asyncio.create_task()",
+      "expected_improvement": "Reduce latency to ~1.5-2.5s (50-70% reduction)",
+      "files_affected": ["src/functions/create_buyer_lead.py", "src/functions/create_seller_lead.py"],
+      "implementation_date": "2026-01-13",
+      "background_tasks": ["_handle_buyer_lead_background_tasks()", "_handle_seller_lead_background_tasks()"]
     }
   ],
+  "optimizations": {
+    "lead_creation_latency": {
+      "priority": "high",
+      "status": "implemented",
+      "previous_latency": {
+        "create_buyer_lead": "5.3 seconds",
+        "create_seller_lead": "2.6 seconds"
+      },
+      "target_latency": "1.5-2.5 seconds",
+      "strategy": "Return early + background tasks",
+      "implementation": {
+        "pattern": "Early return after contact creation, background tasks via asyncio.create_task()",
+        "return_point": "Immediately after create_buyer_lead/create_seller_lead succeeds (includes contact_id)",
+        "background_functions": [
+          "_handle_buyer_lead_background_tasks() - handles log_call, add_note, SMS confirmation, office notification",
+          "_handle_seller_lead_background_tasks() - handles log_call, add_note, SMS confirmation, office notification"
+        ]
+      },
+      "non_critical_operations": [
+        "log_call (CRM activity logging)",
+        "add_note (detailed notes)",
+        "send_sms confirmation (to buyer/seller)",
+        "send_sms notification (to office)"
+      ],
+      "validation_date": "2026-01-13",
+      "implementation_date": "2026-01-13"
+    },
+    "api_latency": {
+      "status": "acceptable_after_warmup",
+      "cold_start": "~4-5 seconds (normal for Fly.io)",
+      "warm_requests": "0.5-1.2 seconds (acceptable)",
+      "function_endpoints": "4.6 seconds (includes external API calls)",
+      "recommendation": "Keep-alive configuration may help if latency is critical"
+    },
+    "webhook_405_errors": {
+      "status": "configuration_issue",
+      "finding": "Endpoint correctly returns 405 for GET requests (expected). POST requests work (200 OK).",
+      "likely_cause": "Vapi dashboard webhook configuration may be using GET instead of POST, or incorrect URL",
+      "action_needed": "Verify Vapi dashboard: webhook URL = https://sally-love-voice-agent.fly.dev/webhooks/vapi/events, method = POST"
+    }
+  },
+  "validation_results": {
+    "route_to_agent_tool": {
+      "date": "2026-01-13",
+      "status": "passed",
+      "findings": {
+        "pydantic_model": "Matches requirements (5 required, 2 optional fields)",
+        "vapi_tool_schema": "Matches Pydantic model, async: True correctly set",
+        "implementation": "Correctly handles all fields, Transfer Gate enforced, uses Live Call Control API",
+        "context_documentation": "Accurately documented in context.json"
+      }
+    },
+    "lead_creation_latency": {
+      "date": "2026-01-13",
+      "status": "issue_confirmed",
+      "production_metrics": {
+        "create_buyer_lead": "5,294ms (5.29s)",
+        "create_seller_lead": "2,586ms (2.59s)"
+      },
+      "bottleneck": "5-6 sequential API calls per operation",
+      "recommendation": "Implement background task pattern for non-critical operations"
+    }
+  },
   "future_considerations": [
     "Consider structured logging (currently using stdlib logging) if/when needed (keep logs PII-safe)",
     "GHL webhook signature verification (currently disabled, GHL_WEBHOOK_SECRET not configured)",
-    "Stellar MLS integration activation (currently optional and not active)"
+    "Stellar MLS integration activation (currently optional and not active)",
+    "HTTP connection pooling in BoldTrail client (currently creates new connection per request)",
+    "Make duplicate contact check optional in lead creation (saves 500-800ms)"
   ]
 }

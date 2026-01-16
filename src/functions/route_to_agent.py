@@ -393,9 +393,28 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
             except Exception as e:
                 logger.error(f"Fallback transfer failed: {str(e)}")
         
+        # Handle Twilio errors that might be in other languages or configuration issues
+        error_str = str(e)
+        is_config_error = (
+            "not set up" in error_str.lower() or 
+            "forwarding" in error_str.lower() or
+            any(ord(char) > 127 for char in error_str)  # Check for non-ASCII (likely other language)
+        )
+        
+        if is_config_error:
+            logger.error(f"Transfer failed - phone number configuration issue: {error_str}")
+            return VapiResponse(
+                success=False,
+                error="Phone number configuration error",
+                message=(
+                    "I'm unable to connect you directly right now due to a phone configuration issue. "
+                    "Let me have an agent call you back at the number you provided."
+                ),
+            )
+        
         return VapiResponse(
             success=False,
             error=f"Transfer failed: {str(e)}",
-            message="I'm having trouble connecting you right now. Let me take your information and have an agent call you back shortly.",
+            message="I'm having trouble connecting you right now. An agent will call you back shortly.",
         )
 

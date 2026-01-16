@@ -114,8 +114,9 @@ def format_spoken_address(address: str) -> str:
 def format_spoken_price(price: Optional[float]) -> Optional[str]:
     """
     Convert a numeric price into common US real estate speech style:
+    - 249000 -> "two forty-nine thousand"
+    - 418000 -> "four eighteen thousand" (not "four hundred eighteen thousand")
     - 339000 -> "three thirty-nine thousand"
-    - 265000 -> "two sixty-five thousand"
     - 1250000 -> "one point two five million"
     """
     if price is None:
@@ -139,9 +140,19 @@ def format_spoken_price(price: Optional[float]) -> Optional[str]:
         right_words = " ".join(_ONES[int(ch)] for ch in right)
         return f"{_int_to_words(int(left))} point {right_words} million"
 
-    thousands = p // 1000  # 339000 -> 339
-    spoken_thousands = _three_digit_thousands_style(thousands)
-    return f"{spoken_thousands} thousand"
+    thousands = p // 1000  # 249000 -> 249, 418000 -> 418
+    remainder = p % 1000
+    
+    # For prices like 249000 or 418000, prefer shorter form
+    # 249 -> "two forty-nine" (not "two hundred forty-nine")
+    # 418 -> "four eighteen" (not "four hundred eighteen")
+    spoken_thousands = _three_digit_thousands_style_short(thousands)
+    
+    if remainder == 0:
+        return f"{spoken_thousands} thousand"
+    else:
+        # Rare case: prices like 249500
+        return f"{spoken_thousands} thousand, {_three_digit_thousands_style(remainder)}"
 
 
 def _three_digit_thousands_style(n: int) -> str:
@@ -157,6 +168,30 @@ def _three_digit_thousands_style(n: int) -> str:
         return _two_digit(n, pad_oh=False)
     hundreds = n // 100
     last2 = n % 100
+    return f"{_ONES[hundreds]} {_two_digit(last2, pad_oh=last2 < 10)}"
+
+
+def _three_digit_thousands_style_short(n: int) -> str:
+    """
+    Convert 0-999 into shorter "two forty-nine" style (preferred for prices).
+    249 -> "two forty-nine" (not "two hundred forty-nine")
+    418 -> "four eighteen" (not "four hundred eighteen")
+    339 -> "three thirty-nine"
+    """
+    if n < 0 or n > 999:
+        return str(n)
+    if n < 100:
+        return _two_digit(n, pad_oh=False)
+    
+    # For numbers >= 100, prefer shorter form (drop "hundred")
+    hundreds = n // 100
+    last2 = n % 100
+    
+    # Only use "hundred" if last2 is 0 (e.g., 300 -> "three hundred")
+    if last2 == 0:
+        return f"{_ONES[hundreds]} hundred"
+    
+    # Otherwise, drop "hundred" for more natural speech (249 -> "two forty-nine")
     return f"{_ONES[hundreds]} {_two_digit(last2, pad_oh=last2 < 10)}"
 
 

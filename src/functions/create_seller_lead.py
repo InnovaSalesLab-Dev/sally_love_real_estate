@@ -3,8 +3,9 @@ Function: Create Seller Lead
 Captures and stores seller lead information in CRM
 """
 
+import asyncio
 from fastapi import APIRouter
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from src.models.vapi_models import VapiResponse, CreateSellerLeadRequest
 from src.models.crm_models import Contact, SellerLead, ContactType, LeadStatus
 from src.integrations.boldtrail import BoldTrailClient
@@ -19,6 +20,135 @@ router = APIRouter()
 
 crm_client = BoldTrailClient()
 twilio_client = TwilioClient()
+
+
+async def _handle_seller_lead_background_tasks(
+    contact_id: str,
+    request: CreateSellerLeadRequest,
+    seller_lead: SellerLead,
+    phone: str,
+    email: Optional[str]
+) -> None:
+    """
+    Handle non-critical background tasks for seller lead creation.
+    These run after the API response is returned to reduce latency.
+    
+    Tasks:
+    - Log call activity to CRM
+    - Add detailed note
+    - Send confirmation SMS to seller
+    - Send notification SMS to office
+    """
+    try:
+        # Log call activity to CRM (required for tracking)
+        try:
+            await crm_client.log_call(
+                contact_id=contact_id,
+                direction="inbound",
+                result=3,  # 3 = Contacted
+                notes=f"Initial seller inquiry call for property at {seller_lead.property_address}. Timeline: {seller_lead.timeframe or 'Not specified'}."
+            )
+            logger.info(f"Call logged successfully for contact: {contact_id}")
+        except Exception as e:
+            logger.warning(f"Failed to log call activity for contact {contact_id}: {str(e)}")
+        
+        # Add detailed note with conversation context (required for CRM completeness)
+        try:
+            note_content = f"Seller Lead from AI Voice Agent\n\n"
+            note_content += f"Property Details:\n"
+            note_content += f"- Address: {seller_lead.property_address}\n"
+            if seller_lead.property_type:
+                note_content += f"- Type: {seller_lead.property_type}\n"
+            if seller_lead.bedrooms:
+                note_content += f"- Bedrooms: {seller_lead.bedrooms}\n"
+            if seller_lead.bathrooms:
+                note_content += f"- Bathrooms: {seller_lead.bathrooms}\n"
+            if seller_lead.square_feet:
+                note_content += f"- Square Feet: {seller_lead.square_feet:,}\n"
+            if seller_lead.year_built:
+                note_content += f"- Year Built: {seller_lead.year_built}\n"
+            if seller_lead.condition:
+                note_content += f"- Condition: {seller_lead.condition}\n"
+            if seller_lead.previously_listed is not None:
+                note_content += f"- Previously Listed: {'Yes' if seller_lead.previously_listed else 'No'}\n"
+            if seller_lead.currently_occupied is not None:
+                note_content += f"- Currently Occupied: {'Yes' if seller_lead.currently_occupied else 'No'}\n"
+            if seller_lead.reason_for_selling:
+                note_content += f"- Reason for Selling: {seller_lead.reason_for_selling}\n"
+            if seller_lead.timeframe:
+                note_content += f"- Timeline: {seller_lead.timeframe}\n"
+            if seller_lead.estimated_value:
+                note_content += f"- Estimated Value: ${seller_lead.estimated_value:,.0f}\n"
+            if request.notes:
+                note_content += f"\nAdditional Notes:\n{request.notes}"
+            
+            await crm_client.add_note(
+                contact_id=contact_id,
+                note=note_content,
+                title="AI Concierge - Seller Lead Details"
+            )
+            logger.info(f"Note added successfully for contact: {contact_id}")
+        except Exception as e:
+            logger.warning(f"Failed to add note for contact {contact_id}: {str(e)}")
+        
+        # Send confirmation SMS to seller
+        try:
+            confirmation_message = (
+                f"Hi {request.first_name}! Thank you for considering Sally Love Real Estate. "
+                f"A listing specialist will contact you shortly to discuss your property at {request.property_address}. "
+                f"We look forward to helping you!"
+            )
+            await twilio_client.send_sms(phone, confirmation_message)
+            logger.info(f"Confirmation SMS sent to seller: {phone}")
+        except Exception as e:
+            logger.warning(f"Failed to send confirmation SMS to seller: {str(e)}")
+        
+        # Send notification to office/Jeff about new seller lead (respects TEST_MODE)
+        if settings.LEAD_NOTIFICATION_ENABLED:
+            try:
+                # Build notification message for office
+                office_notification = (
+                    f"🏡 NEW SELLER LEAD from AI Agent\n\n"
+                    f"Name: {request.first_name} {request.last_name}\n"
+                    f"Phone: {phone}\n"
+                    f"Email: {email or 'Not provided'}\n"
+                    f"Property: {request.property_address}, {request.city}, {request.state} {request.zip_code}\n"
+                    f"Type: {seller_lead.property_type or 'Not specified'}\n"
+                    f"Beds/Baths: {seller_lead.bedrooms or '?'} bed / {seller_lead.bathrooms or '?'} bath\n"
+                )
+                
+                # Add optional fields if provided
+                if seller_lead.condition:
+                    office_notification += f"Condition: {seller_lead.condition}\n"
+                if seller_lead.previously_listed is not None:
+                    office_notification += f"Previously Listed: {'Yes' if seller_lead.previously_listed else 'No'}\n"
+                if seller_lead.currently_occupied is not None:
+                    office_notification += f"Occupied: {'Yes' if seller_lead.currently_occupied else 'No'}\n"
+                if seller_lead.timeframe:
+                    office_notification += f"Timeline: {seller_lead.timeframe}\n"
+                if seller_lead.estimated_value:
+                    office_notification += f"Est. Value: ${seller_lead.estimated_value:,.0f}\n"
+                if seller_lead.reason_for_selling:
+                    office_notification += f"Reason: {seller_lead.reason_for_selling}\n"
+                    
+                office_notification += f"\nContact ID: {contact_id}\nAction: Schedule consultation ASAP"
+                
+                # Determine notification recipient (TEST_MODE overrides)
+                notification_phone = settings.TEST_AGENT_PHONE if settings.TEST_MODE else (
+                    settings.JEFF_NOTIFICATION_PHONE or settings.OFFICE_NOTIFICATION_PHONE
+                )
+                
+                if notification_phone:
+                    await twilio_client.send_sms(notification_phone, office_notification)
+                    logger.info(f"Office notification sent to: {notification_phone} (TEST_MODE: {settings.TEST_MODE})")
+                else:
+                    logger.warning("No notification phone configured (JEFF_NOTIFICATION_PHONE or OFFICE_NOTIFICATION_PHONE)")
+                    
+            except Exception as e:
+                logger.warning(f"Failed to send office notification: {str(e)}")
+                
+    except Exception as e:
+        logger.exception(f"Error in seller lead background tasks: {str(e)}")
 
 
 @router.post("/create_seller_lead")
@@ -148,127 +278,11 @@ async def create_seller_lead(request: CreateSellerLeadRequest) -> VapiResponse:
         
         logger.info(f"Seller lead created successfully with contact_id: {contact_id}")
         
-        # Log call activity to CRM (required for tracking)
-        if contact_id:
-            try:
-                await crm_client.log_call(
-                    contact_id=contact_id,
-                    direction="inbound",
-                    result=3,  # 3 = Contacted
-                    notes=f"Initial seller inquiry call for property at {seller_lead.property_address}. Timeline: {seller_lead.timeframe or 'Not specified'}."
-                )
-                logger.info(f"Call logged successfully for contact: {contact_id}")
-            except Exception as e:
-                logger.warning(f"Failed to log call activity for contact {contact_id}: {str(e)}")
-        else:
-            logger.error("Cannot log call: contact_id is None")
-        
-        # Add detailed note with conversation context (required for CRM completeness)
-        if contact_id:
-            try:
-                note_content = f"Seller Lead from AI Voice Agent\n\n"
-                note_content += f"Property Details:\n"
-                note_content += f"- Address: {seller_lead.property_address}\n"
-                if seller_lead.property_type:
-                    note_content += f"- Type: {seller_lead.property_type}\n"
-                if seller_lead.bedrooms:
-                    note_content += f"- Bedrooms: {seller_lead.bedrooms}\n"
-                if seller_lead.bathrooms:
-                    note_content += f"- Bathrooms: {seller_lead.bathrooms}\n"
-                if seller_lead.square_feet:
-                    note_content += f"- Square Feet: {seller_lead.square_feet:,}\n"
-                if seller_lead.year_built:
-                    note_content += f"- Year Built: {seller_lead.year_built}\n"
-                if seller_lead.condition:
-                    note_content += f"- Condition: {seller_lead.condition}\n"
-                if seller_lead.previously_listed is not None:
-                    note_content += f"- Previously Listed: {'Yes' if seller_lead.previously_listed else 'No'}\n"
-                if seller_lead.currently_occupied is not None:
-                    note_content += f"- Currently Occupied: {'Yes' if seller_lead.currently_occupied else 'No'}\n"
-                if seller_lead.reason_for_selling:
-                    note_content += f"- Reason for Selling: {seller_lead.reason_for_selling}\n"
-                if seller_lead.timeframe:
-                    note_content += f"- Timeline: {seller_lead.timeframe}\n"
-                if seller_lead.estimated_value:
-                    note_content += f"- Estimated Value: ${seller_lead.estimated_value:,.0f}\n"
-                if request.notes:
-                    note_content += f"\nAdditional Notes:\n{request.notes}"
-                
-                await crm_client.add_note(
-                    contact_id=contact_id,
-                    note=note_content,
-                    title="AI Concierge - Seller Lead Details"
-                )
-                logger.info(f"Note added successfully for contact: {contact_id}")
-            except Exception as e:
-                logger.warning(f"Failed to add note for contact {contact_id}: {str(e)}")
-        else:
-            logger.error("Cannot add note: contact_id is None")
-        
-        # Send confirmation SMS to seller
-        try:
-            confirmation_message = (
-                f"Hi {request.first_name}! Thank you for considering Sally Love Real Estate. "
-                f"A listing specialist will contact you shortly to discuss your property at {request.property_address}. "
-                f"We look forward to helping you!"
-            )
-            await twilio_client.send_sms(phone, confirmation_message)
-            logger.info(f"Confirmation SMS sent to seller: {phone}")
-        except Exception as e:
-            logger.warning(f"Failed to send confirmation SMS to seller: {str(e)}")
-        
-        # Send notification to office/Jeff about new seller lead (respects TEST_MODE)
-        if settings.LEAD_NOTIFICATION_ENABLED:
-            try:
-                # Build notification message for office
-                office_notification = (
-                    f"🏡 NEW SELLER LEAD from AI Agent\n\n"
-                    f"Name: {request.first_name} {request.last_name}\n"
-                    f"Phone: {phone}\n"
-                    f"Email: {email or 'Not provided'}\n"
-                    f"Property: {request.property_address}, {request.city}, {request.state} {request.zip_code}\n"
-                    f"Type: {seller_lead.property_type or 'Not specified'}\n"
-                    f"Beds/Baths: {seller_lead.bedrooms or '?'} bed / {seller_lead.bathrooms or '?'} bath\n"
-                )
-                
-                # Add optional fields if provided
-                if seller_lead.condition:
-                    office_notification += f"Condition: {seller_lead.condition}\n"
-                if seller_lead.previously_listed is not None:
-                    office_notification += f"Previously Listed: {'Yes' if seller_lead.previously_listed else 'No'}\n"
-                if seller_lead.currently_occupied is not None:
-                    office_notification += f"Occupied: {'Yes' if seller_lead.currently_occupied else 'No'}\n"
-                if seller_lead.timeframe:
-                    office_notification += f"Timeline: {seller_lead.timeframe}\n"
-                if seller_lead.estimated_value:
-                    office_notification += f"Est. Value: ${seller_lead.estimated_value:,.0f}\n"
-                if seller_lead.reason_for_selling:
-                    office_notification += f"Reason: {seller_lead.reason_for_selling}\n"
-                    
-                office_notification += f"\nContact ID: {contact_id}\nAction: Schedule consultation ASAP"
-                
-                # Determine notification recipient (TEST_MODE overrides)
-                notification_phone = settings.TEST_AGENT_PHONE if settings.TEST_MODE else (
-                    settings.JEFF_NOTIFICATION_PHONE or settings.OFFICE_NOTIFICATION_PHONE
-                )
-                
-                if notification_phone:
-                    await twilio_client.send_sms(notification_phone, office_notification)
-                    logger.info(f"Office notification sent to: {notification_phone} (TEST_MODE: {settings.TEST_MODE})")
-                else:
-                    logger.warning("No notification phone configured (JEFF_NOTIFICATION_PHONE or OFFICE_NOTIFICATION_PHONE)")
-                    
-            except Exception as e:
-                logger.warning(f"Failed to send office notification: {str(e)}")
-                # Don't fail the whole operation if notification fails
-        
-        # Format response message
-        property_details = f"{request.property_address}, {request.city}"
-        
+        # Return immediately with contact_id - non-critical operations run in background
         # Concise response message per prompt guidelines
         message = f"Thank you, {request.first_name}! Sally or Jeff will contact you to discuss your property and schedule a consultation. You'll also get a text."
         
-        return VapiResponse(
+        response = VapiResponse(
             success=True,
             message=message,
             data={
@@ -277,6 +291,20 @@ async def create_seller_lead(request: CreateSellerLeadRequest) -> VapiResponse:
                 "property_details": seller_lead.model_dump(exclude={"contact"})
             }
         )
+        
+        # Fire off background tasks for non-critical operations (don't await)
+        if contact_id:
+            asyncio.create_task(
+                _handle_seller_lead_background_tasks(
+                    contact_id=contact_id,
+                    request=request,
+                    seller_lead=seller_lead,
+                    phone=phone,
+                    email=email
+                )
+            )
+        
+        return response
         
     except BoldTrailError as e:
         logger.error(f"CRM error in create_seller_lead: {e.message}")
