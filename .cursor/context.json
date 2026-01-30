@@ -192,6 +192,13 @@
       ],
       "test_mode": "TEST_MODE env var overrides notification recipients"
     },
+    "smtp": {
+      "client": "src/integrations/email_client.py",
+      "status": "optional",
+      "features": ["send_email via SMTP"],
+      "use_cases": ["Email notifications via send_notification (notification_type: email or both)"],
+      "config": "SMTP_HOST, SMTP_PORT, SMTP_FROM_EMAIL, SMTP_USERNAME, SMTP_PASSWORD, SMTP_USE_TLS"
+    },
     "ghl": {
       "client": "src/webhooks/ghl_webhooks.py",
       "webhooks": {
@@ -274,8 +281,10 @@
         },
         {
           "file": "src/functions/send_notification.py",
-          "purpose": "Send SMS notification (lead alerts, transfer failures)",
+          "purpose": "Send SMS and/or email notifications (lead alerts, transfer failures, confirmations)",
           "uses_twilio": true,
+          "uses_smtp": true,
+          "notification_type": "sms | email | both",
           "respects_test_mode": true
         }
       ]
@@ -429,7 +438,13 @@
       "JEFF_NOTIFICATION_PHONE": "Optional alternate notification recipient (E.164 format)",
       "STELLAR_MLS_USERNAME": "Optional MLS integration username",
       "STELLAR_MLS_PASSWORD": "Optional MLS integration password",
-      "GHL_WEBHOOK_SECRET": "Optional GHL webhook signature secret (currently not used)"
+      "GHL_WEBHOOK_SECRET": "Optional GHL webhook signature secret (currently not used)",
+      "SMTP_HOST": "SMTP server host (e.g., smtp.gmail.com)",
+      "SMTP_PORT": "SMTP port (default 587)",
+      "SMTP_FROM_EMAIL": "Sender email address",
+      "SMTP_USERNAME": "SMTP authentication username",
+      "SMTP_PASSWORD": "SMTP authentication password (app password for Gmail)",
+      "SMTP_USE_TLS": "true|false - use TLS (default true)"
     }
   },
   "deployment": {

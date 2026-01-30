@@ -68,7 +68,14 @@ class StellarMLSError(IntegrationError):
 
 class TwilioError(IntegrationError):
     """Exception for Twilio errors"""
-    
+
     def __init__(self, message: str, status_code: int = 500, details: Optional[Dict[str, Any]] = None):
         super().__init__(message, service="Twilio", status_code=status_code, details=details)
+
+
+class EmailError(IntegrationError):
+    """Exception for email (SMTP) errors"""
+
+    def __init__(self, message: str, status_code: int = 500, details: Optional[Dict[str, Any]] = None):
+        super().__init__(message, service="SMTP", status_code=status_code, details=details)
 

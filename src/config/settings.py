@@ -68,7 +68,15 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str  # Must be set in .env
     LOG_FILE: str  # Must be set in .env
-    
+
+    # Email (SMTP) - Optional, for email notifications
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_USE_TLS: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

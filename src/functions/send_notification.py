@@ -7,9 +7,10 @@ from fastapi import APIRouter
 from typing import Dict, Any
 from src.models.vapi_models import VapiResponse, SendNotificationRequest
 from src.integrations.twilio_client import TwilioClient
+from src.integrations.email_client import EmailClient
 from src.config.settings import settings
 from src.utils.logger import get_logger
-from src.utils.errors import TwilioError
+from src.utils.errors import TwilioError, EmailError
 from src.utils.validators import validate_phone, validate_email
 
 logger = get_logger(__name__)
@@ -75,13 +76,27 @@ async def send_notification(request: SendNotificationRequest) -> VapiResponse:
         if notification_type in ["email", "both"] and request.recipient_email:
             try:
                 email = validate_email(request.recipient_email)
-                # Email sending would be implemented here
-                # For now, we'll log it
-                logger.info(f"Email notification requested to: {email}")
-                sent_channels.append("email")
-                # TODO: Implement email sending via SendGrid, AWS SES, or similar
+
+                email_client = EmailClient()
+                if not email_client.is_configured:
+                    logger.warning("SMTP not configured - skipping email notification")
+                    errors.append("Email: SMTP not configured")
+                else:
+                    subject = f"Notification from {settings.BUSINESS_NAME}"
+                    await email_client.send_email(
+                        to_email=email,
+                        subject=subject,
+                        body=request.message,
+                        html_body=f"<p>{request.message}</p>",
+                    )
+                    sent_channels.append("email")
+                    logger.info(f"Email sent successfully to {email}")
+            except EmailError as e:
+                error_msg = getattr(e, "message", str(e))
+                logger.error(f"Failed to send email: {error_msg}")
+                errors.append(f"Email: {error_msg}")
             except Exception as e:
-                logger.error(f"Failed to send email: {str(e)}")
+                logger.exception(f"Unexpected error sending email: {str(e)}")
                 errors.append(f"Email: {str(e)}")
         
         # Check if at least one channel succeeded
