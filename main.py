@@ -40,6 +40,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"Server: {settings.HOST}:{settings.PORT}")
     logger.info(f"Business: {settings.BUSINESS_NAME}")
     logger.info(f"Phone: {settings.BUSINESS_PHONE}")
+    smtp_ok = bool(settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD)
+    logger.info(f"Email (SMTP) configured: {smtp_ok}")
     
     yield
     
@@ -47,20 +49,25 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 Shutting down Sally Love Voice Agent System")
 
 
-# Initialize FastAPI app
+# Initialize FastAPI app (disable docs in production)
 app = FastAPI(
     title="Sally Love Real Estate Voice Agent API",
     description="AI-powered voice automation system for real estate operations",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if settings.is_development else None,
+    redoc_url="/redoc" if settings.is_development else None,
     lifespan=lifespan,
 )
 
-# CORS middleware
+# CORS middleware (restrictive in production - webhooks are server-to-server)
+_cors_origins = (
+    ["*"]
+    if settings.is_development
+    else [o.strip() for o in (settings.CORS_ORIGINS or "").split(",") if o.strip()]
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -72,34 +79,30 @@ app.add_middleware(
 async def vapi_error_handler(request: Request, exc: VapiError):
     """Handle Vapi-specific errors"""
     logger.error(f"Vapi error: {exc.message}")
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"error": exc.message, "details": exc.details},
-    )
+    content = {"error": exc.message}
+    if settings.is_development and exc.details:
+        content["details"] = exc.details
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 @app.exception_handler(IntegrationError)
 async def integration_error_handler(request: Request, exc: IntegrationError):
     """Handle integration errors"""
     logger.error(f"Integration error ({exc.service}): {exc.message}")
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "error": exc.message,
-            "service": exc.service,
-            "details": exc.details,
-        },
-    )
+    content = {"error": exc.message, "service": exc.service}
+    if settings.is_development and exc.details:
+        content["details"] = exc.details
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
-    """Handle general exceptions"""
+    """Handle general exceptions - never leak internal details in production"""
     logger.exception(f"Unexpected error: {str(exc)}")
-    return JSONResponse(
-        status_code=500,
-        content={"error": "Internal server error", "details": str(exc)},
-    )
+    content = {"error": "Internal server error"}
+    if settings.is_development:
+        content["details"] = str(exc)
+    return JSONResponse(status_code=500, content=content)
 
 
 # Health check endpoint
@@ -129,6 +132,7 @@ async def health_check():
             "boldtrail": "configured" if settings.BOLDTRAIL_API_KEY else "not_configured",
             "stellar_mls": "configured" if settings.STELLAR_MLS_USERNAME else "not_configured",
             "twilio": "configured" if settings.TWILIO_ACCOUNT_SID else "not_configured",
+            "smtp": "configured" if (settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD) else "not_configured",
         },
     }
 

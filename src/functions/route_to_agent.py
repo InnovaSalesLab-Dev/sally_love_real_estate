@@ -12,6 +12,7 @@ import json
 from src.models.vapi_models import VapiResponse
 from src.integrations.boldtrail import BoldTrailClient
 from src.integrations.twilio_client import TwilioClient
+from src.integrations.email_client import EmailClient
 from src.config.settings import settings
 from src.utils.logger import get_logger
 from src.utils.errors import BoldTrailError
@@ -53,7 +54,20 @@ async def send_failed_transfer_notification(
         if notification_phone:
             await twilio_client.send_sms(notification_phone, notification_message)
             logger.info(f"Failed transfer notification sent to: {notification_phone} (TEST_MODE: {settings.TEST_MODE})")
-        else:
+        if settings.OFFICE_NOTIFICATION_EMAIL:
+            try:
+                email_client = EmailClient()
+                if email_client.is_configured:
+                    await email_client.send_email(
+                        to_email=settings.OFFICE_NOTIFICATION_EMAIL,
+                        subject="⚠️ Failed Transfer Alert",
+                        body=notification_message,
+                        html_body=f"<pre>{notification_message}</pre>",
+                    )
+                    logger.info(f"Failed transfer notification email sent to: {settings.OFFICE_NOTIFICATION_EMAIL}")
+            except Exception as e:
+                logger.warning(f"Failed to send failed transfer notification email: {str(e)}")
+        if not notification_phone:
             logger.warning("No notification phone configured for failed transfer alert")
             
     except Exception as e:

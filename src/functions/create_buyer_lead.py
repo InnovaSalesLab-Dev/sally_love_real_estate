@@ -10,6 +10,7 @@ from src.models.vapi_models import VapiResponse, CreateBuyerLeadRequest
 from src.models.crm_models import Contact, BuyerLead, ContactType, LeadStatus
 from src.integrations.boldtrail import BoldTrailClient
 from src.integrations.twilio_client import TwilioClient
+from src.integrations.email_client import EmailClient
 from src.config.settings import settings
 from src.utils.logger import get_logger
 from src.utils.errors import BoldTrailError
@@ -88,7 +89,7 @@ async def _handle_buyer_lead_background_tasks(
         except Exception as e:
             logger.warning(f"Failed to add note for contact {contact_id}: {str(e)}")
         
-        # Send confirmation SMS to buyer
+        # Send confirmation SMS and email to buyer
         try:
             confirmation_message = (
                 f"Hi {request.first_name}! Thank you for your interest. "
@@ -97,6 +98,27 @@ async def _handle_buyer_lead_background_tasks(
             )
             await twilio_client.send_sms(phone, confirmation_message)
             logger.info(f"Confirmation SMS sent to buyer: {phone}")
+            if email:
+                try:
+                    email_client = EmailClient()
+                    if not email_client.is_configured:
+                        logger.warning(
+                            "SMTP not configured - skipping buyer confirmation email. "
+                            "Set SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD in Fly secrets."
+                        )
+                    else:
+                        await email_client.send_email(
+                            to_email=email,
+                            subject=f"Thank you from {settings.BUSINESS_NAME}",
+                            body=confirmation_message,
+                            html_body=f"<p>{confirmation_message}</p>",
+                        )
+                        logger.info(f"Confirmation email sent to buyer: {email}")
+                except Exception as e:
+                    logger.error(
+                        f"Failed to send confirmation email to buyer {email}: {type(e).__name__}: {e}",
+                        exc_info=True,
+                    )
         except Exception as e:
             logger.warning(f"Failed to send confirmation SMS to buyer: {str(e)}")
         
@@ -136,7 +158,20 @@ async def _handle_buyer_lead_background_tasks(
                 if notification_phone:
                     await twilio_client.send_sms(notification_phone, office_notification)
                     logger.info(f"Office notification sent to: {notification_phone} (TEST_MODE: {settings.TEST_MODE})")
-                else:
+                if settings.OFFICE_NOTIFICATION_EMAIL:
+                    try:
+                        email_client = EmailClient()
+                        if email_client.is_configured:
+                            await email_client.send_email(
+                                to_email=settings.OFFICE_NOTIFICATION_EMAIL,
+                                subject=f"🏠 New Buyer Lead - {request.first_name} {request.last_name}",
+                                body=office_notification,
+                                html_body=f"<pre>{office_notification}</pre>",
+                            )
+                            logger.info(f"Office notification email sent to: {settings.OFFICE_NOTIFICATION_EMAIL}")
+                    except Exception as e:
+                        logger.warning(f"Failed to send office notification email: {str(e)}")
+                if not notification_phone:
                     logger.warning("No notification phone configured (JEFF_NOTIFICATION_PHONE or OFFICE_NOTIFICATION_PHONE)")
                     
             except Exception as e:

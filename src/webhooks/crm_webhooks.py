@@ -7,6 +7,8 @@ from fastapi import APIRouter, Request, HTTPException
 from typing import Dict, Any
 from src.utils.logger import get_logger
 from src.integrations.twilio_client import TwilioClient
+from src.integrations.email_client import EmailClient
+from src.config.settings import settings
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -127,17 +129,30 @@ async def handle_appointment_created(payload: Dict[str, Any]) -> Dict[str, Any]:
     
     logger.info(f"New appointment created: {appointment_id}")
     
-    # Send confirmation to contact if phone number available
+    # Send confirmation to contact via SMS and email
     contact_phone = appointment.get("contactPhone")
+    contact_email = appointment.get("contactEmail") or (appointment.get("contact") or {}).get("email")
+    message = (
+        f"Your appointment has been confirmed for {appointment.get('date')}. "
+        f"We'll send you a reminder before the appointment. - Sally Love Real Estate"
+    )
     if contact_phone:
         try:
-            message = (
-                f"Your appointment has been confirmed for {appointment.get('date')}. "
-                f"We'll send you a reminder before the appointment. - Sally Love Real Estate"
-            )
             await twilio_client.send_sms(contact_phone, message)
         except Exception as e:
-            logger.warning(f"Failed to send appointment confirmation: {str(e)}")
+            logger.warning(f"Failed to send appointment confirmation SMS: {str(e)}")
+    if contact_email:
+        try:
+            email_client = EmailClient()
+            if email_client.is_configured:
+                await email_client.send_email(
+                    to_email=contact_email,
+                    subject=f"Appointment Confirmation - {settings.BUSINESS_NAME}",
+                    body=message,
+                    html_body=f"<p>{message}</p>",
+                )
+        except Exception as e:
+            logger.warning(f"Failed to send appointment confirmation email: {str(e)}")
     
     return {"status": "processed", "appointment_id": appointment_id}
 
@@ -150,21 +165,34 @@ async def handle_appointment_reminder(payload: Dict[str, Any]) -> Dict[str, Any]
     
     logger.info(f"Sending reminder for appointment: {appointment_id}")
     
-    # Send reminder SMS
+    # Send reminder via SMS and email
+    contact_email = appointment.get("contactEmail") or (appointment.get("contact") or {}).get("email")
+    property_address = appointment.get("propertyAddress", "your appointment")
+    date = appointment.get("date")
+    message = (
+        f"Reminder: Your showing at {property_address} is scheduled for {date}. "
+        f"See you soon! - Sally Love Real Estate"
+    )
     if contact_phone:
         try:
-            property_address = appointment.get("propertyAddress", "your appointment")
-            date = appointment.get("date")
-            
-            message = (
-                f"Reminder: Your showing at {property_address} is scheduled for {date}. "
-                f"See you soon! - Sally Love Real Estate"
-            )
             await twilio_client.send_sms(contact_phone, message)
-            logger.info(f"Reminder sent for appointment {appointment_id}")
+            logger.info(f"Reminder SMS sent for appointment {appointment_id}")
         except Exception as e:
-            logger.error(f"Failed to send appointment reminder: {str(e)}")
+            logger.error(f"Failed to send appointment reminder SMS: {str(e)}")
             return {"status": "error", "message": str(e)}
+    if contact_email:
+        try:
+            email_client = EmailClient()
+            if email_client.is_configured:
+                await email_client.send_email(
+                    to_email=contact_email,
+                    subject=f"Appointment Reminder - {settings.BUSINESS_NAME}",
+                    body=message,
+                    html_body=f"<p>{message}</p>",
+                )
+                logger.info(f"Reminder email sent for appointment {appointment_id}")
+        except Exception as e:
+            logger.warning(f"Failed to send appointment reminder email: {str(e)}")
     
     return {"status": "processed", "appointment_id": appointment_id}
 

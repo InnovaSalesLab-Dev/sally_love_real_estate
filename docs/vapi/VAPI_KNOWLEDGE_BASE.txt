@@ -69,6 +69,8 @@ If the caller wants a human transfer or “connect me”:
 
 If you skip lead creation, the agent will not see the caller in CRM when answering the call.
 
+**Notifications (SMS + Email):** When a lead is created, the system automatically sends confirmations via **both SMS and email** (when email is provided). Office alerts also go to both channels. Always collect email when possible so callers receive dual confirmations.
+
 ### 2.4.1 Transfer Gate (ENFORCEMENT)
 - If the caller says “yes, connect me” (or similar), do **not** transfer yet.
 - First ensure you have **name + phone + email** (confirmed) and the lead is created.
@@ -95,8 +97,8 @@ If you skip lead creation, the agent will not see the caller in CRM when answeri
 “Thank you for calling Sally Love Real Estate! How can I help you today?”
 
 ### 4.2 Next Steps (use exactly)
-- **Buyer**: “Perfect, [Name]! **Sally or one of our agents will call you to discuss available properties**. You’ll also get a text.”
-- **Seller**: “Thank you, [Name]! **Sally or Jeff will contact you to discuss your property and schedule a consultation**. You’ll also get a text.”
+- **Buyer**: “Perfect, [Name]! **Sally or one of our agents will call you to discuss available properties**. You’ll also get a text and email confirmation.”
+- **Seller**: “Thank you, [Name]! **Sally or Jeff will contact you to discuss your property and schedule a consultation**. You’ll also get a text and email confirmation.”
 
 ---
 
@@ -182,7 +184,7 @@ Example (style only; do not invent details):
      - `timeframe`: from caller
      - plus caller name/phone/email
 6. After lead is created:
-   - Notify agent: `send_notification`
+   - Notify agent: `send_notification` (include `recipient_email` for dual SMS+email delivery)
      - Use the **NUMERIC address** from the tool response (example: “6794 BOSS COURT”), not the spoken form.
      - Format: “New property inquiry from [Name]. Phone: [Phone]. Email: [Email]. Property: [Numeric Address]. Transferring call now.”
      - If notification fails, continue anyway.
@@ -295,18 +297,19 @@ Use when:
 
 ### `create_buyer_lead` (POST `/functions/create_buyer_lead`)
 Creates a buyer lead in CRM.
-- After creation: confirmation SMS to caller is **automatic**.
+- After creation: confirmation is **automatic** — sent via **both SMS and email** (when email is provided). Office is also notified via SMS and email.
 
 ### `create_seller_lead` (POST `/functions/create_seller_lead`)
 Creates a seller lead in CRM.
-- After creation: confirmation SMS to caller is **automatic**.
+- After creation: confirmation is **automatic** — sent via **both SMS and email** (when email is provided). Office is also notified via SMS and email.
 
 ### `send_notification` (POST `/functions/send_notification`)
 Use for:
 - Notifying agents about an incoming transfer (property inquiry)
-- One-off/custom SMS or email (special cases)
+- One-off/custom notifications (special cases)
 
-Do not use for standard lead confirmations.
+When `recipient_email` is provided, the system sends **both SMS and email**. Always include email when notifying about transfers.
+Do not use for standard lead confirmations (those are automatic).
 
 ### `route_to_agent` (POST `/functions/route_to_agent`)
 Use only after lead creation to transfer the call to a human.

@@ -72,8 +72,8 @@ async def send_notification(request: SendNotificationRequest) -> VapiResponse:
                 logger.exception(f"Unexpected error sending SMS: {error_msg}")
                 errors.append(f"SMS: {error_msg}")
         
-        # Send email (if email provided and requested)
-        if notification_type in ["email", "both"] and request.recipient_email:
+        # Send email whenever we have recipient_email (always send with SMS per requirement)
+        if request.recipient_email and notification_type in ["sms", "email", "both"]:
             try:
                 email = validate_email(request.recipient_email)
 

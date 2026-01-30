@@ -444,7 +444,8 @@
       "SMTP_FROM_EMAIL": "Sender email address",
       "SMTP_USERNAME": "SMTP authentication username",
       "SMTP_PASSWORD": "SMTP authentication password (app password for Gmail)",
-      "SMTP_USE_TLS": "true|false - use TLS (default true)"
+      "SMTP_USE_TLS": "true|false - use TLS (default true)",
+      "CORS_ORIGINS": "Comma-separated origins for production CORS (empty = no browser origins)"
     }
   },
   "deployment": {
@@ -522,11 +523,6 @@
     "If you change deployment config, update context.json deployment section."
   ],
   "known_issues": [
-    {
-      "issue": "settings.py currently defines VAPI_ASSISTANT_ID twice (lines 29 and 66)",
-      "status": "minor",
-      "impact": "No functional impact (both point to same field), but should be deduplicated for clarity"
-    },
     {
       "issue": "Lead creation latency: 5-7 seconds (create_buyer_lead: 5.3s, create_seller_lead: 2.6s)",
       "status": "resolved",

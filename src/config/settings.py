@@ -28,7 +28,9 @@ class Settings(BaseSettings):
     VAPI_API_URL: str = "https://api.vapi.ai"  # Static - never changes
     VAPI_ASSISTANT_ID: str = ""  # Required if using GHL webhooks - your Vapi assistant ID
 
-    
+    # CORS - Optional, comma-separated origins for production (e.g. "https://app.example.com")
+    CORS_ORIGINS: str = ""
+
     # BoldTrail CRM Configuration
     BOLDTRAIL_API_KEY: str  # Must be set in .env
     BOLDTRAIL_API_URL: str = "https://api.kvcore.com/v2/public"  # Static - never changes
@@ -54,6 +56,7 @@ class Settings(BaseSettings):
     
     # Lead Notification Configuration (who gets notified when leads are created)
     OFFICE_NOTIFICATION_PHONE: str  # Must be set in .env
+    OFFICE_NOTIFICATION_EMAIL: str = ""  # Optional - office/Jeff email for dual SMS+email alerts
     JEFF_NOTIFICATION_PHONE: str = ""  # Optional - empty if not set
     LEAD_NOTIFICATION_ENABLED: bool  # Must be set in .env
     
@@ -61,10 +64,7 @@ class Settings(BaseSettings):
     TEST_MODE: bool  # Must be set in .env
     TEST_AGENT_NAME: str  # Must be set in .env
     TEST_AGENT_PHONE: str  # Must be set in .env
-    
-    # Vapi Assistant ID for GHL webhooks
-    VAPI_ASSISTANT_ID: str = ""  # Optional - required for GHL form webhook to trigger outbound calls
-    
+
     # Logging
     LOG_LEVEL: str  # Must be set in .env
     LOG_FILE: str  # Must be set in .env
