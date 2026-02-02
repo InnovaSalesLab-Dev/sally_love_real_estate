@@ -104,15 +104,16 @@ Click **"+ Add Property"** and extract:
 | `success` | boolean | Yes | `$.success` | Whether the request succeeded |
 | `message` | string | Yes | `$.message` | Voice-friendly message about agents |
 | `agent_count` | integer | No | `$.data.count` | Number of agents found |
+| `roster_matched` | boolean | No | `$.data.roster_matched` | True if agent in roster; false if fallback used |
 | `agents` | array | No | `$.results` | Array of agent objects |
-| `agent_name` | string | No | `$.results[0].firstName` | First agent's name |
-| `agent_phone` | string | No | `$.results[0].phone` | First agent's phone |
+| `agent_name` | string | No | `$.results[0].name` | First agent's full name (for route_to_agent) |
+| `agent_phone` | string | No | `$.results[0].phone` | First agent's phone (for route_to_agent) |
 | `agent_id` | string | No | `$.results[0].id` | First agent's ID |
 
 ### Description
 
 ```
-Get information about real estate agents including contact details, specialties, service areas, and availability. Use when caller asks about specific agents or needs help from a specialist.
+Get agent info from roster. MANDATORY before route_to_agent when agent phone not from check_property. Use agent_name when caller requests specific person; omit for any agent. Returns results[0].name and results[0].phone for transfer.
 ```
 
 ---

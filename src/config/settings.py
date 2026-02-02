@@ -58,7 +58,11 @@ class Settings(BaseSettings):
     OFFICE_NOTIFICATION_PHONE: str  # Must be set in .env
     OFFICE_NOTIFICATION_EMAIL: str = ""  # Optional - office/Jeff email for dual SMS+email alerts
     JEFF_NOTIFICATION_PHONE: str = ""  # Optional - empty if not set
+    JEFF_NOTIFICATION_EMAIL: str = ""  # Optional - if empty, use OFFICE_NOTIFICATION_EMAIL for Jeff
     LEAD_NOTIFICATION_ENABLED: bool  # Must be set in .env
+
+    # Agent Roster (source of truth for transfers, replaces BoldTrail for agent lookup)
+    AGENT_ROSTER_PATH: str = "data/agent_roster.json"  # Path relative to project root
     
     # Testing Configuration
     TEST_MODE: bool  # Must be set in .env

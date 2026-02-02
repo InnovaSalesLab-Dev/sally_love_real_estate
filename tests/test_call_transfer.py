@@ -37,65 +37,38 @@ TEST_TRANSFER_TO = "+923035699010"  # Pakistan number where call will transfer (
 # TEST PAYLOADS
 # =============================================================================
 
-def get_route_to_agent_payload(agent_name: str = "Hammas Ali") -> Dict[str, Any]:
-    """Generate test payload that mimics Vapi calling route_to_agent function"""
+# Roster agent for testing (from data/agent_roster.json)
+TEST_AGENT_NAME = "Kim Coffer"
+TEST_AGENT_PHONE = "352-626-7671"
+
+
+def get_route_to_agent_payload(
+    agent_name: str = TEST_AGENT_NAME,
+    agent_phone: str = TEST_AGENT_PHONE,
+) -> Dict[str, Any]:
+    """Generate test payload that mimics Vapi calling route_to_agent function.
+    Uses roster agent by default. Transfer Gate requires lead_id, caller_name, caller_phone.
+    """
     return {
         "message": {
             "type": "function-call",
-            "functionCall": {
-                "name": "route_to_agent",
-                "parameters": {
-                    "agent_name": agent_name,
-                    "reason": "property inquiry - buyer interested in 1738 Augustine Drive",
-                    "contact_name": "Test User",
-                    "contact_phone": TEST_CALLER_PHONE,
-                    "contact_email": "test@example.com"
-                }
-            },
             "call": {
                 "id": "test_call_123",
-                "orgId": "test_org",
-                "createdAt": "2025-12-22T10:00:00Z",
-                "updatedAt": "2025-12-22T10:00:00Z",
-                "type": "inboundPhoneCall",
-                "status": "in-progress",
-                "phoneNumberId": settings.VAPI_PHONE_NUMBER_ID,
-                "customer": {
-                    "number": TEST_CALLER_PHONE
-                },
                 "monitor": {
-                    "listenUrl": "wss://api.vapi.ai/call/test_call_123/listen",
                     "controlUrl": f"{BASE_URL}/vapi/control/test_call_123"
                 }
             },
             "toolWithToolCallList": [
                 {
-                    "type": "function",
-                    "function": {
-                        "name": "route_to_agent",
-                        "description": "Transfer the call to a specific agent",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "agent_name": {"type": "string"},
-                                "reason": {"type": "string"},
-                                "contact_name": {"type": "string"},
-                                "contact_phone": {"type": "string"},
-                                "contact_email": {"type": "string"}
-                            }
-                        }
-                    },
                     "toolCall": {
-                        "id": "call_test_123",
-                        "type": "function",
                         "function": {
-                            "name": "route_to_agent",
                             "arguments": {
                                 "agent_name": agent_name,
+                                "agent_phone": agent_phone,
+                                "caller_name": "Test User",
+                                "caller_phone": TEST_CALLER_PHONE,
+                                "lead_id": "test_lead_123",
                                 "reason": "property inquiry - buyer interested in 1738 Augustine Drive",
-                                "contact_name": "Test User",
-                                "contact_phone": TEST_CALLER_PHONE,
-                                "contact_email": "test@example.com"
                             }
                         }
                     }
@@ -144,8 +117,9 @@ async def test_route_to_agent_endpoint():
     print(f"Testing: {url}")
     
     payload = get_route_to_agent_payload()
-    print(f"\nPayload:")
-    print(json.dumps(payload["message"]["functionCall"]["parameters"], indent=2))
+    args = payload["message"]["toolWithToolCallList"][0]["toolCall"]["function"]["arguments"]
+    print(f"\nPayload arguments:")
+    print(json.dumps(args, indent=2))
     
     try:
         async with httpx.AsyncClient() as client:
@@ -181,19 +155,18 @@ async def test_agent_lookup():
     print("TEST 3: Agent Lookup")
     print("="*70)
     
-    # Test with different agent names
+    # Test with different agent names (roster + non-roster for fallback)
     test_agents = [
-        "Hammas Ali",  # Test agent
-        "Sally Love",  # Owner
-        "Jeff Beatty",  # Broker
-        "Unknown Agent"  # Should fallback
+        ("Kim Coffer", "352-626-7671"),  # In roster
+        ("Sally Love", "352-430-6960"),  # In roster
+        ("Unknown Agent", ""),  # Not in roster - will use fallback
     ]
     
     results = []
     
-    for agent_name in test_agents:
+    for agent_name, agent_phone in test_agents:
         print(f"\nTesting agent: {agent_name}")
-        payload = get_route_to_agent_payload(agent_name)
+        payload = get_route_to_agent_payload(agent_name=agent_name, agent_phone=agent_phone or "352-626-7671")
         
         try:
             async with httpx.AsyncClient() as client:
@@ -205,14 +178,10 @@ async def test_agent_lookup():
             
             if response.status_code == 200:
                 data = response.json()
-                destination = data.get("destination", {})
-                dest_number = destination.get("number", "N/A")
-                message = destination.get("message", "N/A")
-                
-                print(f"  ✅ Success")
-                print(f"  📞 Destination: {dest_number}")
-                print(f"  💬 Message: {message}")
-                results.append(True)
+                success = data.get("success", False)
+                message = data.get("message", "N/A")
+                print(f"  ✅ Success: {message}")
+                results.append(success)
             else:
                 print(f"  ❌ Failed - Status: {response.status_code}")
                 results.append(False)

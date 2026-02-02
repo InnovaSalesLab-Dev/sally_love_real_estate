@@ -8,9 +8,11 @@ Uses fallback strategy: XML feed first, then manual listings if no results found
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 from src.models.vapi_models import VapiResponse, CheckPropertyRequest
+from src.config.settings import settings
 from src.integrations.boldtrail import BoldTrailClient
 from src.utils.logger import get_logger
 from src.utils.errors import BoldTrailError
+from src.utils.roster import find_agent_by_name, get_any_agent
 from src.utils.speech_format import format_spoken_address, format_spoken_price
 
 logger = get_logger(__name__)
@@ -176,19 +178,41 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
         }
         
         # Add agent info for single property result (for transfer capability)
+        # Validate against roster: use roster phone when agent matches; else fallback to any roster agent
         if len(properties) == 1:
             prop = properties[0]
-            if prop.get('agentName'):
+            xml_agent_name = (prop.get('agentName') or '').strip()
+            xml_agent_phone = (prop.get('agentPhone') or '').strip()
+            roster_path = settings.AGENT_ROSTER_PATH or None
+
+            roster_agent = find_agent_by_name(xml_agent_name, roster_path) if xml_agent_name else None
+            transfer_phone = None
+            agent_name = xml_agent_name
+            agent_email = prop.get('agentEmail', '')
+
+            if roster_agent:
+                agent_name = roster_agent.get('name') or xml_agent_name
+                transfer_phone = roster_agent.get('cell_phone') or roster_agent.get('phone') or ''
+                agent_email = roster_agent.get('email') or agent_email
+            else:
+                fallback = get_any_agent(roster_path)
+                if fallback:
+                    agent_name = fallback.get('name') or xml_agent_name or 'an agent'
+                    transfer_phone = fallback.get('cell_phone') or fallback.get('phone') or ''
+                    agent_email = fallback.get('email') or ''
+                    if xml_agent_name:
+                        logger.info(f"Listing agent '{xml_agent_name}' not in roster; using fallback: {agent_name}")
+
+            if agent_name:
                 response_data["listing_agent"] = {
-                    "name": prop.get('agentName', ''),
-                    "phone": prop.get('agentPhone', ''),
-                    "email": prop.get('agentEmail', ''),
+                    "name": agent_name,
+                    "phone": transfer_phone or xml_agent_phone,
+                    "email": agent_email,
                     "kvcore_id": prop.get('agentKvcoreId', '')
                 }
-                # Add transfer phone if available (for route_to_agent function)
-                if prop.get('agentPhone'):
-                    response_data["transfer_phone"] = prop.get('agentPhone')
-            
+                if transfer_phone or xml_agent_phone:
+                    response_data["transfer_phone"] = transfer_phone or xml_agent_phone
+
             # Include broker/office info as fallback (Jeff's contact)
             if prop.get('brokerPhone'):
                 response_data["broker"] = {

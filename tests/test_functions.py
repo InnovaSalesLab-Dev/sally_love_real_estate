@@ -35,15 +35,25 @@ def test_check_property_endpoint():
 
 
 def test_get_agent_info_endpoint():
-    """Test get_agent_info function endpoint"""
-    payload = {
-        "city": "Ocala"
-    }
-    
-    response = client.post("/functions/get_agent_info", json=payload)
+    """Test get_agent_info function endpoint (uses roster)"""
+    response = client.post("/functions/get_agent_info", json={})
     assert response.status_code == 200
     data = response.json()
-    assert "success" in data
+    assert data.get("success") is True
+    results = data.get("results", [])
+    if results:
+        assert "phone" in results[0] or "cell_phone" in results[0]
+
+
+def test_get_agent_info_by_name():
+    """Test get_agent_info with agent name (roster lookup)"""
+    response = client.post("/functions/get_agent_info", json={"agent_name": "Sally Love"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("success") is True
+    results = data.get("results", [])
+    assert len(results) >= 1
+    assert any("Sally" in (r.get("name") or "") for r in results)
 
 
 def test_create_buyer_lead_endpoint():

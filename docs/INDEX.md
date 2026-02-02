@@ -90,6 +90,7 @@ Testing tools and validation guides:
 
 | Document | Description |
 |----------|-------------|
+| [VAPI_ROSTER_TRANSFER_TEST_CASES.md](testing/VAPI_ROSTER_TRANSFER_TEST_CASES.md) | **Manual test cases for roster transfer via Vapi calls** |
 | [XML_FEED_VALIDATOR_READY.md](testing/XML_FEED_VALIDATOR_READY.md) | Quick start guide for XML feed validator |
 | [README_XML_VALIDATION.md](testing/README_XML_VALIDATION.md) | Complete XML feed validation documentation |
 | [README_TESTING.md](../scripts/README_TESTING.md) | General testing guide (in scripts folder) |

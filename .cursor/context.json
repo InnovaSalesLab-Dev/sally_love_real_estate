@@ -39,7 +39,7 @@
       "src/functions/": "Vapi tool endpoints (thin controllers): validate input, call integrations/services, compose short message, return VapiResponse. Each file is a FastAPI router.",
       "src/integrations/": "External API clients (BoldTrail, Vapi, Twilio, MLS). All outbound HTTP calls live here. Use httpx.AsyncClient with explicit timeouts.",
       "src/models/": "Pydantic request/response models for tool inputs, Vapi payloads, CRM data structures. Validate at boundaries; do not pass raw dicts.",
-      "src/utils/": "Cross-cutting helpers: logging, validators, errors, speech formatting. Keep utilities small and reusable; avoid importing FastAPI here.",
+      "src/utils/": "Cross-cutting helpers: logging, validators, errors, speech formatting, roster service. Keep utilities small and reusable; avoid importing FastAPI here.",
       "src/webhooks/": "Webhook handlers for Vapi events, CRM webhooks, GoHighLevel form submissions. Keep routing and event handling separate from tool endpoints.",
       "docs/vapi/": "Vapi agent Knowledge Base (VAPI_KNOWLEDGE_BASE.md) and System Prompt (VAPI_SYSTEM_PROMPT_2.md). KB is single source of truth for agent behavior.",
       "scripts/": "Utility scripts for testing, validation, and setup",
@@ -115,6 +115,18 @@
           "src/functions/create_buyer_lead.py",
           "src/functions/create_seller_lead.py"
         ]
+      },
+      {
+        "what": "Agent roster (data/agent_roster.json) is source of truth for transfers",
+        "why": "Client requirement; roster replaces BoldTrail for agent lookup. Ensures consistent, validated agent data.",
+        "when": "2026-01-29",
+        "enforced_in": [
+          "src/utils/roster.py",
+          "src/functions/get_agent_info.py",
+          "src/functions/route_to_agent.py",
+          "src/functions/check_property.py"
+        ],
+        "fallback_chain": "Requested agent -> roster fallback -> main office; on transfer failure: Jeff/office; on no-answer: SMS+email to Jeff"
       }
     ]
   },
@@ -258,15 +270,16 @@
         },
         {
           "file": "src/functions/get_agent_info.py",
-          "purpose": "Retrieve agent information by name or ID",
-          "returns": "Agent details (name, phone, email, ID)"
+          "purpose": "Retrieve agent information from agent roster (source of truth)",
+          "returns": "Agent details (name, phone, email) from data/agent_roster.json"
         },
         {
           "file": "src/functions/route_to_agent.py",
           "purpose": "Transfer call to specific agent using Vapi Live Call Control API",
           "enforces_transfer_gate": true,
           "requires": ["lead_id", "caller_name", "caller_phone", "agent_phone", "agent_name"],
-          "fallback": "Office line if transfer fails"
+          "roster_validation": "Agent must be in roster; if not, uses get_any_agent() fallback",
+          "fallback_chain": "Roster agent -> Jeff/office line on transfer failure; SMS+email to Jeff when no one picks"
         },
         {
           "file": "src/functions/create_buyer_lead.py",
@@ -296,13 +309,21 @@
       ],
       "notes": "Receives call events and tool call webhooks; routes and logs events."
     },
+    "agent_roster": {
+      "state": "active",
+      "files": [
+        "src/utils/roster.py",
+        "data/agent_roster.json"
+      ],
+      "notes": "Agent roster is source of truth for transfers. get_agent_info and check_property use roster; route_to_agent validates against roster and falls back to roster agent or office."
+    },
     "crm_integration": {
       "state": "active",
       "files": [
         "src/integrations/boldtrail.py",
         "src/models/crm_models.py"
       ],
-      "notes": "Search listings via XML feed and manual listings API; create buyer/seller leads; retrieve agent info.",
+      "notes": "Search listings via XML feed and manual listings API; create buyer/seller leads. Agent lookup for transfers uses roster, not BoldTrail.",
       "listing_sources": [
         "BoldTrail XML feed (primary)",
         "Manual listings API (fallback)"
@@ -390,7 +411,8 @@
       ],
       "enforcement": "Transfer Gate in route_to_agent.py blocks if requirements missing",
       "method": "POST {controlUrl}/control (Vapi Live Call Control API)",
-      "fallback": "Office line if transfer fails"
+      "roster_validation": "Agent must be in agent_roster.json; if not, route_to_agent uses get_any_agent() fallback",
+      "fallback_chain": "Roster agent -> Jeff/office on transfer failure; SMS+email to Jeff when no one picks (Vapi webhook end-of-call)"
     },
     "ghl_form_submission": {
       "description": "GoHighLevel form submission triggers outbound call",
@@ -435,7 +457,9 @@
     "optional": {
       "VAPI_ASSISTANT_ID": "Assistant ID (required for GHL form webhook to trigger outbound calls)",
       "VAPI_PHONE_NUMBER_ID": "Optional phone number ID for Vapi",
+      "AGENT_ROSTER_PATH": "Path to agent roster JSON (default: data/agent_roster.json)",
       "JEFF_NOTIFICATION_PHONE": "Optional alternate notification recipient (E.164 format)",
+      "JEFF_NOTIFICATION_EMAIL": "Optional Jeff email for alerts (if empty, uses OFFICE_NOTIFICATION_EMAIL)",
       "STELLAR_MLS_USERNAME": "Optional MLS integration username",
       "STELLAR_MLS_PASSWORD": "Optional MLS integration password",
       "GHL_WEBHOOK_SECRET": "Optional GHL webhook signature secret (currently not used)",

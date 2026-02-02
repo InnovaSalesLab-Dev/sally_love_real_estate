@@ -4,12 +4,19 @@ Handles events from Vapi including call status updates, transcripts, etc.
 """
 
 from fastapi import APIRouter, Request, HTTPException
-from typing import Dict, Any
-from src.models.vapi_models import VapiWebhookEvent
+from typing import Any, Dict
+
+from src.functions.route_to_agent import send_no_answer_notification_to_jeff
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+# End reasons indicating transfer was attempted but no one picked up
+NO_ANSWER_END_REASONS = frozenset({
+    "call.forwarding.operator-busy",  # Agent was busy
+    "voicemail",  # Call went to voicemail
+})
 
 
 @router.post("/events")
@@ -103,29 +110,36 @@ async def handle_transcript(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 async def handle_end_of_call(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Handle end of call report events"""
-    call_id = payload.get("call", {}).get("id")
-    duration = payload.get("call", {}).get("duration")
-    end_reason = payload.get("endReason")
-    
+    call_data = payload.get("call", {})
+    call_id = call_data.get("id")
+    duration = call_data.get("duration")
+    end_reason = payload.get("endReason") or payload.get("endedReason") or call_data.get("endedReason")
+    summary = payload.get("summary", {}) or {}
+
     logger.info(f"Call {call_id} ended: duration={duration}s, reason={end_reason}")
-    
-    # Extract call summary
-    summary = payload.get("summary", {})
-    transcript = payload.get("transcript", "")
-    
-    # You can add logic here to:
-    # - Save call recording URL
-    # - Store full transcript
-    # - Update CRM with call notes
-    # - Generate follow-up tasks
-    # - Calculate call analytics
-    
-    logger.debug(f"Call summary: {summary}")
-    
+    logger.debug(f"End-of-call payload keys: {list(payload.keys())}")
+
+    # Detect transfer no-answer: send SMS and email to Jeff
+    if end_reason and end_reason in NO_ANSWER_END_REASONS:
+        logger.info(f"Transfer no-answer detected (endReason={end_reason}), sending notification to Jeff")
+        try:
+            caller_name = summary.get("customVariables", {}).get("caller_name") if isinstance(summary.get("customVariables"), dict) else None
+            caller_phone = summary.get("customVariables", {}).get("caller_phone") if isinstance(summary.get("customVariables"), dict) else None
+            attempted_agent = summary.get("customVariables", {}).get("attempted_agent_name") if isinstance(summary.get("customVariables"), dict) else None
+            attempted_agent_phone = summary.get("customVariables", {}).get("attempted_agent_phone") if isinstance(summary.get("customVariables"), dict) else None
+            await send_no_answer_notification_to_jeff(
+                caller_name=caller_name,
+                caller_phone=caller_phone,
+                attempted_agent_name=attempted_agent,
+                attempted_agent_phone=attempted_agent_phone,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send no-answer notification: {e}")
+
     return {
         "status": "processed",
         "call_id": call_id,
-        "duration": duration
+        "duration": duration,
     }
 
 
