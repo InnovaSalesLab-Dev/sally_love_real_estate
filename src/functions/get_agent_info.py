@@ -83,10 +83,7 @@ async def get_agent_info(request: GetAgentInfoRequest) -> VapiResponse:
             agent = agents[0]
             message = f"I have information about {agent.get('name', 'an agent')}. Would you like me to connect you with them?"
         else:
-            message = (
-                f"I found {len(agents)} available agents. "
-                "Would you like me to tell you about each one, or connect you with the first available agent?"
-            )
+            message = "Let me connect you with one of our agents."
 
         return VapiResponse(
             success=True,
