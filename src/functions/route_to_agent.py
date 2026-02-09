@@ -219,21 +219,24 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
 
         logger.info(f"Routing call to agent: {agent_name} ({agent_phone})")
 
-        # Enforce Lead-Before-Transfer: do not transfer unless we have a CRM contact/lead id
-        # and basic caller contact info for agent context.
-        if not lead_id or not caller_name or not caller_phone:
+        # Only require caller_name and caller_phone (lead_id is optional)
+        if not caller_name or not caller_phone:
             logger.warning(
-                "Transfer gate blocked: missing lead_id and/or caller contact info "
-                f"(lead_id={bool(lead_id)}, caller_name={bool(caller_name)}, caller_phone={bool(caller_phone)})"
+                "Transfer gate blocked: missing caller contact info "
+                f"(caller_name={bool(caller_name)}, caller_phone={bool(caller_phone)})"
             )
             return VapiResponse(
                 success=False,
-                error="Missing required lead/contact information",
+                error="Missing caller contact information",
                 message=(
                     "Before I connect you, can I get your name and the best callback number? "
                     "That way the agent has your details in case they miss you."
                 ),
             )
+
+        # Log if no lead_id but proceed anyway
+        if not lead_id:
+            logger.info("Proceeding with transfer without lead_id (caller may not be a buyer/seller)")
 
         if not agent_phone:
             return VapiResponse(
@@ -294,6 +297,7 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
                 logger.info(f"✅ Transfer executed successfully to {agent_name} ({agent_phone})")
                 return VapiResponse(
                     success=True,
+                    result="Transfer initiated",  # Vapi requires non-null result
                     message=f"Transfer to {agent_name} initiated successfully"
                 )
             else:
@@ -357,7 +361,11 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
                     response = await client.post(control_endpoint, json=transfer_payload)
                     if response.status_code == 200:
                         logger.info(f"✅ Fallback transfer executed to {fallback_phone}")
-                        return VapiResponse(success=True, message="Fallback transfer initiated")
+                        return VapiResponse(
+                            success=True,
+                            result="Transfer initiated",
+                            message="Fallback transfer initiated"
+                        )
             except Exception as e:
                 logger.error(f"Fallback transfer failed: {str(e)}")
         
