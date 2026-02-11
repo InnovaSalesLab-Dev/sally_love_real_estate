@@ -318,7 +318,7 @@ Capture a buyer lead and say an agent will follow up to set a time.
 ## 6) Tool Reference (Use As Directed in Flows)
 
 ### `check_property` (POST `/functions/check_property`)
-Use when the caller asks about a specific address/MLS # or asks “what’s available” with criteria. Listing agent is roster-validated; if not in roster, a roster agent is used for transfer.
+Use when the caller asks about a specific address/MLS #, asks “what’s available” with criteria, or asks for **listings by agent name** (e.g., “What listings does Kim Coffer have?”). For listings by agent: call get_agent_info first, then check_property with agent_name = results[0].name. Listing agent is roster-validated; if not in roster, a roster agent is used for transfer.
 
 Assistant behavior:
 - Do not read or paraphrase listing descriptions (ignore any `description` field entirely).
@@ -332,6 +332,7 @@ Returns agents from the agent roster. You MUST call this tool—you cannot know 
 
 **When to call:**
 - Caller requests a specific agent by name → call with `agent_name` (e.g., "Sally Love", "Kim Coffer")
+- Caller asks "what listings does [agent] have?" → call get_agent_info first, then check_property with agent_name = results[0].name
 - Caller wants "an agent" or "someone" → call with no params
 - Listing agent info missing from check_property → call with no params
 

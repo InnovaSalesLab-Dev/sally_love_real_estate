@@ -77,6 +77,7 @@ class CheckPropertyRequest(BaseModel):
     state: Optional[str] = "FL"
     zip_code: Optional[str] = None
     mls_number: Optional[str] = None
+    agent_name: Optional[str] = None  # Search listings by listing agent (use roster name from get_agent_info)
     property_type: Optional[str] = None
     min_price: Optional[float] = None
     max_price: Optional[float] = None
@@ -97,7 +98,7 @@ class CheckPropertyRequest(BaseModel):
         return v
     
     # Strip whitespace from string fields and convert empty strings to None
-    @field_validator('address', 'city', 'state', 'zip_code', 'mls_number', 'property_type', mode='before')
+    @field_validator('address', 'city', 'state', 'zip_code', 'mls_number', 'agent_name', 'property_type', mode='before')
     @classmethod
     def strip_strings(cls, v):
         """Strip whitespace and convert empty strings to None"""

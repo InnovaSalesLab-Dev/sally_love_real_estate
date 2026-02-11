@@ -850,12 +850,21 @@ class BoldTrailClient:
                 .replace("court", "ct")
                 .strip())
     
+    def _agent_name_matches(self, listing_agent_name: str, search_agent_name: str) -> bool:
+        """Check if listing agent name matches search (case-insensitive, partial match)."""
+        if not search_agent_name or not listing_agent_name:
+            return False
+        a = " ".join(str(listing_agent_name).strip().lower().split())
+        b = " ".join(str(search_agent_name).strip().lower().split())
+        return a == b or b in a or a in b
+
     async def search_manual_listings(
         self,
         address: Optional[str] = None,
         city: Optional[str] = None,
         state: Optional[str] = None,
         zip_code: Optional[str] = None,
+        agent_name: Optional[str] = None,
         property_type: Optional[str] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
@@ -939,6 +948,15 @@ class BoldTrailClient:
                 if zip_code != listing_zip:
                     continue
             
+            # Agent name filter (listings by listing agent)
+            if agent_name:
+                listing_agent = (
+                    listing.get("agentName") or
+                    f"{listing.get('agentFirstName', '')} {listing.get('agentLastName', '')}".strip()
+                )
+                if not self._agent_name_matches(listing_agent, agent_name):
+                    continue
+            
             # Property type filter (case-insensitive partial match)
             if property_type:
                 listing_type = str(listing.get("propertyType", "")).lower()
@@ -1001,6 +1019,7 @@ class BoldTrailClient:
         state: Optional[str] = None,
         zip_code: Optional[str] = None,
         mls_number: Optional[str] = None,
+        agent_name: Optional[str] = None,
         property_type: Optional[str] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
@@ -1061,6 +1080,15 @@ class BoldTrailClient:
             # MLS number filter
             if mls_number and listing.get("mlsNumber", "") != mls_number and listing.get("mls_number", "") != mls_number:
                 continue
+            
+            # Agent name filter (listings by listing agent)
+            if agent_name:
+                listing_agent = (
+                    listing.get("agentName") or
+                    f"{listing.get('agentFirstName', '')} {listing.get('agentLastName', '')}".strip()
+                )
+                if not self._agent_name_matches(listing_agent, agent_name):
+                    continue
             
             # Property type filter (case-insensitive partial match)
             if property_type and property_type.lower() not in listing.get("propertyType", "").lower():

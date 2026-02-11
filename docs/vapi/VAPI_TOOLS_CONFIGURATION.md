@@ -38,6 +38,7 @@ Click **"+ Add Property"** and add the following properties:
 | `state` | string | No | State abbreviation (default: "FL") |
 | `zip_code` | string | No | ZIP code |
 | `mls_number` | string | No | MLS listing number |
+| `agent_name` | string | No | Search listings by listing agent (use canonical name from get_agent_info results) |
 | `property_type` | string | No | Type of property (single-family, condo, townhouse, land) |
 | `min_price` | number | No | Minimum price |
 | `max_price` | number | No | Maximum price |
@@ -62,7 +63,7 @@ Click **"+ Add Property"** and extract:
 | `broker_name` | string | No | `$.data.broker.name` | Brokerage name (single property only) |
 
 **Important Notes:**
-- `listing_agent` and `transfer_phone` in `data` are only present when exactly 1 property is found
+- `listing_agent` and `transfer_phone` in `data` are present when exactly 1 property is found, or when searching by `agent_name` (multiple results)
 - When multiple properties are found, agent data is still available in each property object: `$.results[0].agentName`, `$.results[0].agentPhone`, etc.
 - Use `transfer_phone` or `agent_phone` with `route_to_agent` function for call transfers
 - Use `broker_phone` as fallback if agent unavailable (always 352-399-2010 - Jeff Beatty)
@@ -71,7 +72,7 @@ Click **"+ Add Property"** and extract:
 ### Description
 
 ```
-Search for properties in BoldTrail CRM by address, city, price range, bedrooms, bathrooms, or MLS number. Returns property details including listing agent information for call transfers. Use this when caller asks about specific properties or wants to see what's available. When a single property is found, agent contact information is included for immediate transfer capability.
+Search for properties in BoldTrail CRM by address, city, price range, bedrooms, bathrooms, MLS number, or agent_name. For "listings by agent" (e.g., "What does Kim Coffer have?"): call get_agent_info first to get canonical name, then pass results[0].name as agent_name. Returns property details including listing agent information for call transfers.
 ```
 
 ---

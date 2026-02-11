@@ -50,6 +50,7 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
             request.city,
             request.zip_code,
             request.mls_number,
+            request.agent_name,
             request.property_type,
             request.min_price,
             request.max_price,
@@ -60,12 +61,15 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
         if not has_search_criteria:
             return VapiResponse(
                 success=False,
-                message="I need at least one search criteria to look up properties. Please provide an address, city, ZIP code, MLS number, or property preferences like price range or number of bedrooms.",
+                message="I need at least one search criteria to look up properties. Please provide an address, city, ZIP code, MLS number, agent name, or property preferences like price range or number of bedrooms.",
                 error="No search criteria provided",
                 results=[],
                 data={"search_params": {}}
             )
         
+        # When searching by agent name only, return more listings; otherwise limit to 5
+        limit = 10 if request.agent_name and not any([request.address, request.city, request.zip_code, request.mls_number]) else 5
+
         # Search listings from XML feed (includes all MLS listings)
         properties = await crm_client.search_listings_from_xml(
             address=request.address,
@@ -73,13 +77,14 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
             state=request.state or "FL",
             zip_code=request.zip_code,
             mls_number=request.mls_number,
+            agent_name=request.agent_name,
             property_type=request.property_type,
             min_price=request.min_price,
             max_price=request.max_price,
             bedrooms=request.bedrooms,
             bathrooms=request.bathrooms,
             status="active",  # Only show active/available listings
-            limit=5  # Return top 5 matches
+            limit=limit
         )
         
         # Fallback: If no results from XML feed, try manual listings
@@ -90,29 +95,26 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
                 city=request.city,
                 state=request.state or "FL",
                 zip_code=request.zip_code,
+                agent_name=request.agent_name,
                 property_type=request.property_type,
                 min_price=request.min_price,
                 max_price=request.max_price,
                 bedrooms=request.bedrooms,
                 bathrooms=request.bathrooms,
                 status="active",
-                limit=5
+                limit=limit
             )
             
             if properties:
                 logger.info(f"Found {len(properties)} properties in manual listings")
         
         if not properties:
-            # Check if we have enough location info to avoid asking for zip again
-            has_zip = bool(request.zip_code)
-            has_city = bool(request.city)
-            has_full_address = bool(request.address)
-            
-            if has_zip or (has_city and has_full_address):
-                # We have enough location info, don't ask for zip again
+            # When searching by agent name only, offer to connect
+            if request.agent_name and not any([request.address, request.city, request.zip_code, request.mls_number]):
+                message = f"I didn't find any active listings for {request.agent_name} at the moment. Would you like me to connect you with them anyway?"
+            elif any([request.zip_code, (request.city and request.address)]):
                 message = "No properties found matching your criteria. Would you like to adjust your search, or should I connect you with an agent who can help?"
             else:
-                # Missing location info
                 message = "No properties found. Do you have the city and zip code, or an MLS number?"
             
             return VapiResponse(
@@ -164,12 +166,19 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
             min_price_spoken = format_spoken_price(min(p.get('price', 0) for p in properties))
             max_price_spoken = format_spoken_price(max(p.get('price', 0) for p in properties))
             
-            message = (
-                f"I found {len(properties)} properties matching your criteria. "
-                f"The prices range from {min_price_spoken} "
-                f"to {max_price_spoken}. "
-                f"Would you like me to tell you about each one?"
-            )
+            if request.agent_name:
+                message = (
+                    f"I found {len(properties)} listings for {request.agent_name}. "
+                    f"The prices range from {min_price_spoken} to {max_price_spoken}. "
+                    f"Would you like me to tell you about each one, or connect you with {request.agent_name}?"
+                )
+            else:
+                message = (
+                    f"I found {len(properties)} properties matching your criteria. "
+                    f"The prices range from {min_price_spoken} "
+                    f"to {max_price_spoken}. "
+                    f"Would you like me to tell you about each one?"
+                )
         
         # Include agent and transfer info in response data
         response_data = {
@@ -177,10 +186,11 @@ async def check_property(request: CheckPropertyRequest) -> VapiResponse:
             "search_params": request.model_dump(exclude_none=True)
         }
         
-        # Add agent info for single property result (for transfer capability)
+        # Add agent info for transfer capability (single property, or multiple when searching by agent)
         # Validate against roster: use roster phone when agent matches; else fallback to any roster agent
-        if len(properties) == 1:
-            prop = properties[0]
+        prop_for_agent = properties[0] if properties else None
+        if prop_for_agent and (len(properties) == 1 or request.agent_name):
+            prop = prop_for_agent
             xml_agent_name = (prop.get('agentName') or '').strip()
             xml_agent_phone = (prop.get('agentPhone') or '').strip()
             roster_path = settings.AGENT_ROSTER_PATH or None
