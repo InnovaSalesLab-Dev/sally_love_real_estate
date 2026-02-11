@@ -14,6 +14,11 @@ from src.utils.roster import (
     load_roster,
 )
 
+
+def _get_jeff_fallback(roster_path) -> dict | None:
+    """Return Jeff Beatty for fallback when requested agent not found."""
+    return find_agent_by_name("Jeff Beatty", roster_path)
+
 logger = get_logger(__name__)
 router = APIRouter()
 
@@ -57,12 +62,12 @@ async def get_agent_info(request: GetAgentInfoRequest) -> VapiResponse:
             if agent:
                 agents = [_roster_agent_to_response(agent, roster_matched=True)]
             else:
-                # Fallback: pick any agent
-                fallback = get_any_agent(roster_path)
+                # Fallback: use Jeff (not a random roster agent like Star Amador)
+                fallback = _get_jeff_fallback(roster_path)
                 if fallback:
                     agents = [_roster_agent_to_response(fallback, roster_matched=False)]
                     roster_matched = False
-                    logger.info(f"Agent '{request.agent_name}' not in roster; using fallback: {fallback.get('name')}")
+                    logger.info(f"Agent '{request.agent_name}' not in roster; using Jeff fallback: {fallback.get('name')}")
         else:
             # No name: return first N agents
             roster = load_roster(roster_path)
