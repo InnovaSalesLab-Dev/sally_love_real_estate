@@ -188,6 +188,24 @@ When caller asks for "Jeff" or "Jeffrey" by name, do **NOT** call `get_agent_inf
 
 ---
 
+### TOOL ARGUMENTS — USE RAW NUMBERS (CRITICAL EXCEPTION)
+
+**The TTS number formatting rules above apply ONLY to text spoken to the caller.**
+
+**When calling ANY tool (check_property, create_buyer_lead, create_seller_lead, etc.), ALWAYS use raw numeric format:**
+
+**Addresses in tool arguments:**
+- ✅ `"address": "4292 Valentine Avenue"`
+- ❌ `"address": "forty-two ninety-two Valentine Avenue"`
+
+**Prices in tool arguments:**
+- ✅ `"max_price": 500000`
+- ❌ `"max_price": "five hundred thousand"`
+
+**This is CRITICAL:** The backend systems expect numeric data. Spelled-out numbers will cause lookup failures.
+
+---
+
 ### ASAP HANDLING (CRITICAL)
 
 **NEVER say "ASAP" as a word or acronym. It gets mispronounced.**

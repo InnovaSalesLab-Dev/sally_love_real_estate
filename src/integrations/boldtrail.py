@@ -2,7 +2,9 @@
 BoldTrail CRM API client
 """
 
+import re
 import httpx
+import jellyfish
 import xml.etree.ElementTree as ET
 import time
 from typing import Dict, Any, Optional, List
@@ -18,6 +20,12 @@ logger = get_logger(__name__)
 _listings_cache: Optional[List[Dict[str, Any]]] = None
 _cache_timestamp: Optional[float] = None
 CACHE_DURATION = 7200  # 2 hours in seconds
+
+# The Villages (FL) spans multiple municipalities; MLS may use any of these as city
+THE_VILLAGES_CITIES = frozenset({
+    "the villages", "lady lake", "oxford", "summerfield", "wildwood",
+    "fruitland park", "bushnell", "webster",
+})
 
 
 class BoldTrailClient:
@@ -848,8 +856,109 @@ class BoldTrailClient:
                 .replace("drive", "dr")
                 .replace("lane", "ln")
                 .replace("court", "ct")
+                .replace("circle", "cir")
+                .replace("southeast", "se")
+                .replace("southwest", "sw")
+                .replace("northeast", "ne")
+                .replace("northwest", "nw")
                 .strip())
+
+    def _parse_address_parts(self, norm_addr: str) -> tuple[Optional[str], List[str], Optional[str]]:
+        """
+        Parse normalized address into street number, street name words, and street type.
+        Handles formats like "3016 gallenoll ct" or "16642 bellavista cir".
+        """
+        tokens = [t for t in re.split(r"\W+", norm_addr) if t]
+        street_number = tokens[0] if tokens and tokens[0].isdigit() else None
+        name_start = 1 if street_number else 0
+        # Street type: last token if it's a known abbreviation
+        street_types = {"ct", "st", "ave", "dr", "ln", "cir", "rd", "blvd"}
+        street_type = None
+        name_end = len(tokens)
+        if len(tokens) > name_start and tokens[-1] in street_types:
+            street_type = tokens[-1]
+            name_end = len(tokens) - 1
+        name_words = [t for t in tokens[name_start:name_end] if len(t) >= 2]
+        return street_number, name_words, street_type
+
+    def _word_matches_phonetic(self, search_word: str, listing_words: List[str]) -> bool:
+        """
+        True if search_word matches any listing word.
+        Uses: exact substring, metaphone (phonetic), or Jaro-Winkler >= 0.85 (typo/transcription).
+        """
+        for lw in listing_words:
+            if search_word in lw or lw in search_word:
+                return True
+            try:
+                if jellyfish.metaphone(search_word) == jellyfish.metaphone(lw):
+                    return True
+                # Fallback: similar spelling (e.g. Gallenoll vs Gallinule from voice transcription)
+                if jellyfish.jaro_winkler_similarity(search_word, lw) >= 0.85:
+                    return True
+            except (TypeError, ValueError):
+                pass
+        return False
+
+    def _address_matches(self, listing_addr: str, search_addr: str) -> bool:
+        """
+        Check if search address matches listing address.
+        - Handles compound street names: "Bella Vista" vs "Bellavista Circle"
+        - Number-first: when street number matches (e.g. 3016), uses phonetic matching for
+          street name so "3016 Gallenoll Court" matches "3016 Gallinule Court" (voice transcription errors)
+        """
+        if not search_addr:
+            return True
+        norm_listing = self._normalize_address(listing_addr)
+        norm_search = self._normalize_address(search_addr)
+        # Direct substring match (either direction)
+        if norm_search in norm_listing or norm_listing in norm_search:
+            return True
+        # Parse address parts
+        search_num, search_words, search_type = self._parse_address_parts(norm_search)
+        list_num, list_words, list_type = self._parse_address_parts(norm_listing)
+        if not search_words:
+            return False
+        # When both have street numbers, they must match (reject 3017 vs 3016)
+        if search_num and list_num:
+            if search_num != list_num:
+                return False
+            # Numbers match: require street type match if both have it
+            if search_type and list_type and search_type != list_type:
+                return False
+            return self._search_words_match_listing(search_words, list_words)
+        # Street-name-only or listing has no number
+        return self._search_words_match_listing(search_words, list_words)
+
+    def _search_words_match_listing(self, search_words: List[str], list_words: List[str]) -> bool:
+        """
+        True if all search words match listing (exact/phonetic), or if concatenated
+        form matches (e.g. "belle" + "vista" → "bellavista" matches "Bellavista Circle").
+        """
+        if all(self._word_matches_phonetic(w, list_words) for w in search_words):
+            return True
+        # Compound: "Belle Vista" (2 words) vs "Bellavista" (1 word)
+        if len(search_words) >= 2:
+            combined = "".join(search_words)
+            if self._word_matches_phonetic(combined, list_words):
+                return True
+        return False
     
+    def _city_matches(self, listing_city: str, search_city: str) -> bool:
+        """
+        Check if listing city matches search city.
+        When search is "The Villages", accept listings in any Villages-area municipality
+        (Lady Lake, Oxford, Summerfield, Wildwood, etc.).
+        """
+        if not search_city:
+            return True
+        lc = str(listing_city).strip().lower()
+        sc = str(search_city).strip().lower()
+        if lc == sc:
+            return True
+        if sc in ("the villages", "villages") and lc in THE_VILLAGES_CITIES:
+            return True
+        return False
+
     def _agent_name_matches(self, listing_agent_name: str, search_agent_name: str) -> bool:
         """Check if listing agent name matches search (case-insensitive, partial match)."""
         if not search_agent_name or not listing_agent_name:
@@ -923,19 +1032,14 @@ class BoldTrailClient:
         matches = []
         
         for listing in listings:
-            # Address filter (case-insensitive partial match)
-            if address:
-                listing_addr = str(listing.get("address", "")).lower()
-                search_addr = address.lower()
-                if search_addr not in listing_addr and listing_addr not in search_addr:
-                    continue
+            # Address filter (partial match, supports compound street names e.g. Bella Vista/Bellavista)
+            if address and not self._address_matches(str(listing.get("address", "")), address):
+                continue
             
-            # City filter (case-insensitive)
-            if city:
-                listing_city = str(listing.get("city", "")).lower()
-                if city.lower() != listing_city:
-                    continue
-            
+            # City filter (The Villages area expands to multiple municipalities)
+            if city and not self._city_matches(listing.get("city", ""), city):
+                continue
+
             # State filter (case-insensitive)
             if state:
                 listing_state = str(listing.get("state", "")).lower()
@@ -1058,17 +1162,14 @@ class BoldTrailClient:
         matches = []
         
         for listing in all_listings:
-            # Address filter (normalized partial match)
-            if address:
-                listing_addr = self._normalize_address(listing.get("address", ""))
-                search_addr = self._normalize_address(address)
-                if search_addr not in listing_addr and listing_addr not in search_addr:
-                    continue
-            
-            # City filter (case-insensitive)
-            if city and listing.get("city", "").lower() != city.lower():
+            # Address filter (partial match, supports compound street names e.g. Bella Vista/Bellavista)
+            if address and not self._address_matches(listing.get("address", ""), address):
                 continue
             
+            # City filter (The Villages area expands to multiple municipalities)
+            if city and not self._city_matches(listing.get("city", ""), city):
+                continue
+
             # State filter (case-insensitive)
             if state and listing.get("state", "").lower() != state.lower():
                 continue

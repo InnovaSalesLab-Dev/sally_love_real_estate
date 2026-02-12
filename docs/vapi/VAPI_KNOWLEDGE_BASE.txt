@@ -113,6 +113,22 @@ If you skip lead creation, the agent will not see the caller in CRM when answeri
 ### 5.1 Specific Property Inquiry (caller mentions an address / MLS #)
 **Goal**: Provide basics (beds/baths/price/status) and connect to the listing agent if requested.
 
+**5.1.0 Partial / Street-Name-Only Addresses (CRITICAL)**
+Callers often give incomplete or varied address info. The search supports partial matches.
+
+**Street name only** (e.g., "Do you have listings on Bella Vista?", "Anything on Bellavista Circle?"):
+- Call `check_property` with `address` = street name (e.g., "Bella Vista" or "Bellavista Circle").
+- If they said "in The Villages" or similar, add `city="The Villages"`.
+- Do NOT wait for full address. Search with what you have.
+
+**Partial or spoken-format address** (e.g., "16642 Southeast eightieth Bella Vista Circle" or "1 6 6 4 2 SE 80th Bellavista"):
+- For tool args, use **raw format** (digits, abbreviations): `address="16642 SE 80th Bellavista Circle"`.
+- Convert spoken ordinals to numerals: "eightieth" → "80th", "nineteenth" → "19th".
+- Directionals: "Southeast" → "SE", "Northeast" → "NE", etc.
+- If they mention area, add `city` (e.g., "The Villages").
+
+**If no results:** Follow 4.2 (ask for city/ZIP or MLS number).
+
 1. Ask: “What’s the address?” (or “Do you have the MLS number?”)
 2. Call: `check_property`
 3. Respond with **only**: beds/baths + price + status + city/area. (No descriptions/features.)

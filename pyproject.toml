@@ -15,6 +15,7 @@ dependencies = [
     "aiofiles>=24.1.0",
     "phonenumbers>=8.13.0",
     "pytz>=2024.1",
+    "jellyfish>=1.0.0",
 ]
 
 [project.optional-dependencies]
