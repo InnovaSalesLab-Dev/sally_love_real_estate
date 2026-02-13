@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     VAPI_PHONE_NUMBER_ID: Optional[str] = None  # Optional
     VAPI_API_URL: str = "https://api.vapi.ai"  # Static - never changes
     VAPI_ASSISTANT_ID: str = ""  # Required if using GHL webhooks - your Vapi assistant ID
+    VAPI_DYNAMIC_WARM_TRANSFER_ENABLED: bool = True  # Enable warm transfer plan in dynamic transfer endpoint
+    VAPI_TRANSFER_HOLD_AUDIO_URL: str = ""  # Optional custom hold audio URL for warm transfers
+    VAPI_TRANSFER_SUMMARY_ENABLED: bool = True  # Enable summary handoff for warm transfers
+    VAPI_TRANSFER_SUMMARY_TIMEOUT_SECONDS: int = 5  # Timeout for summary generation
+    VAPI_TRANSFER_VOICEMAIL_DETECTION_TYPE: str = "transcript"  # transcript|audio
 
     # CORS - Optional, comma-separated origins for production (e.g. "https://app.example.com")
     CORS_ORIGINS: str = ""

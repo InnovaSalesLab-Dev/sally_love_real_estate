@@ -144,6 +144,11 @@
     "optional": {
       "VAPI_ASSISTANT_ID": "Assistant ID (used for some webhook flows)",
       "VAPI_PHONE_NUMBER_ID": "Optional phone number ID",
+      "VAPI_DYNAMIC_WARM_TRANSFER_ENABLED": "Enable warm transfer plan in dynamic transfer endpoint (true|false)",
+      "VAPI_TRANSFER_HOLD_AUDIO_URL": "Optional custom hold audio URL for dynamic warm transfer",
+      "VAPI_TRANSFER_SUMMARY_ENABLED": "Enable summary handoff for dynamic warm transfer (true|false)",
+      "VAPI_TRANSFER_SUMMARY_TIMEOUT_SECONDS": "Summary generation timeout for dynamic warm transfer",
+      "VAPI_TRANSFER_VOICEMAIL_DETECTION_TYPE": "Voicemail detection mode for dynamic warm transfer (transcript|audio)",
       "JEFF_NOTIFICATION_PHONE": "Optional alternate notification recipient",
       "STELLAR_MLS_USERNAME": "Optional MLS integration",
       "STELLAR_MLS_PASSWORD": "Optional MLS integration"

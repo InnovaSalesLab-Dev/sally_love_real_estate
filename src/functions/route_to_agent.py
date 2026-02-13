@@ -22,6 +22,59 @@ router = APIRouter()
 twilio_client = TwilioClient()
 
 
+def _build_warm_transfer_plan(caller_name: str, reason: str) -> Optional[Dict[str, Any]]:
+    """
+    Build Vapi warm transfer plan for dynamic transfers.
+    Uses assistant-based warm transfer config from settings.
+    """
+    if not settings.VAPI_DYNAMIC_WARM_TRANSFER_ENABLED:
+        return None
+
+    operator_message = (
+        f"Hi, I have {caller_name} on the line regarding {reason}. "
+        "Are you available to take the call?"
+    )
+
+    summary_plan = {
+        "enabled": settings.VAPI_TRANSFER_SUMMARY_ENABLED,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Summarize the caller's inquiry in 1-2 sentences, "
+                    "including property address if mentioned and what they need."
+                ),
+            },
+            {
+                "role": "user",
+                "content": "Here is the call transcript: {{transcript}}",
+            },
+        ],
+        "timeoutSeconds": settings.VAPI_TRANSFER_SUMMARY_TIMEOUT_SECONDS,
+        "useAssistantLlm": True,
+    }
+
+    transfer_plan: Dict[str, Any] = {
+        "mode": "warm-transfer-experimental",
+        "message": operator_message,
+        "summaryPlan": summary_plan,
+        "fallbackPlan": {
+            "message": (
+                "I wasn't able to reach the agent right now. "
+                "Let me make sure someone from our team follows up with you."
+            ),
+            "endCallEnabled": False,
+        },
+        "voicemailDetectionType": settings.VAPI_TRANSFER_VOICEMAIL_DETECTION_TYPE,
+    }
+
+    # Custom hold tone/music while caller is on hold
+    if settings.VAPI_TRANSFER_HOLD_AUDIO_URL:
+        transfer_plan["holdAudioUrl"] = settings.VAPI_TRANSFER_HOLD_AUDIO_URL
+
+    return transfer_plan
+
+
 async def send_failed_transfer_notification(
     agent_name: str,
     agent_phone: str,
@@ -269,6 +322,10 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
         transfer_reason = reason or "general inquiry"
         caller_name_display = caller_name or "a caller"
         transfer_message = f"Transferring you to {agent_name} now. Please hold."
+        transfer_plan = _build_warm_transfer_plan(
+            caller_name=caller_name_display,
+            reason=transfer_reason,
+        )
         
         # Execute transfer via Live Call Control (Official Vapi Pattern)
         # Reference: https://docs.vapi.ai/calls/call-dynamic-transfers
@@ -276,8 +333,12 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
         
         destination = {
             "type": "number",
-            "number": agent_phone
+            "number": agent_phone,
+            "message": transfer_message,
         }
+
+        if transfer_plan:
+            destination["transferPlan"] = transfer_plan
         
         # POST to controlUrl/control to execute the transfer
         # Official Vapi docs: POST to controlUrl/control
@@ -352,10 +413,17 @@ async def route_to_agent(request: Request) -> Union[Dict[str, Any], VapiResponse
                         "type": "transfer",
                         "destination": {
                             "type": "number",
-                            "number": fallback_phone
+                            "number": fallback_phone,
+                            "message": "I'm connecting you to our office now. Please hold.",
                         },
                         "content": "I'm connecting you to our office now. Please hold."
                     }
+                    fallback_plan = _build_warm_transfer_plan(
+                        caller_name=caller_name or "a caller",
+                        reason=reason or "general inquiry",
+                    )
+                    if fallback_plan:
+                        transfer_payload["destination"]["transferPlan"] = fallback_plan
                     # Official Vapi docs: POST to controlUrl/control
                     control_endpoint = f"{control_url.rstrip('/')}/control"
                     response = await client.post(control_endpoint, json=transfer_payload)
