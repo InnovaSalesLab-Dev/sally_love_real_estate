@@ -95,6 +95,23 @@ def test_create_seller_lead_endpoint():
     assert "success" in data
 
 
+def test_create_seller_lead_endpoint_minimum_fields():
+    """Seller lead should work without ZIP/last name (voice-friendly)."""
+    payload = {
+        "first_name": "Jane",
+        "phone": "+1234567890",
+        "property_address": "123 Main St",
+        "city": "Ocala",
+        # state defaults to FL, zip_code optional
+        "timeframe": "not sure",
+    }
+
+    response = client.post("/functions/create_seller_lead", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "success" in data
+
+
 def test_route_to_agent_endpoint():
     """Test route_to_agent function endpoint"""
     payload = {

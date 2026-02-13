@@ -134,7 +134,7 @@ async def _handle_seller_lead_background_tasks(
                     f"Name: {request.first_name} {request.last_name}\n"
                     f"Phone: {phone}\n"
                     f"Email: {email or 'Not provided'}\n"
-                    f"Property: {request.property_address}, {request.city}, {request.state} {request.zip_code}\n"
+                    f"Property: {request.property_address}, {request.city}, {(request.state or 'FL')} {(request.zip_code or '')}\n"
                     f"Type: {seller_lead.property_type or 'Not specified'}\n"
                     f"Beds/Baths: {seller_lead.bedrooms or '?'} bed / {seller_lead.bathrooms or '?'} bath\n"
                 )
@@ -205,6 +205,10 @@ async def create_seller_lead(request: CreateSellerLeadRequest) -> VapiResponse:
     try:
         logger.info(f"Creating seller lead: {request.first_name} {request.last_name}")
 
+        # Provide safe defaults when optional fields are missing (voice callers often omit ZIP)
+        request_state = (request.state or "").strip() or "FL"
+        request_zip = (request.zip_code or "").strip()
+
         # Normalize placeholder last names commonly produced by LLMs
         normalized_last_name = (request.last_name or "").strip()
         if normalized_last_name.lower() in {"-", "n/a", "na", "none", "null", "unknown"}:
@@ -235,8 +239,8 @@ async def create_seller_lead(request: CreateSellerLeadRequest) -> VapiResponse:
             contact_type=ContactType.SELLER,
             address=request.property_address,
             city=request.city,
-            state=request.state,
-            zip_code=request.zip_code,
+            state=request_state,
+            zip_code=request_zip or None,
             tags=["voice_agent", "seller_lead"],
             source="AI Concierge",
             notes=request.notes
@@ -247,8 +251,8 @@ async def create_seller_lead(request: CreateSellerLeadRequest) -> VapiResponse:
             contact=contact,
             property_address=request.property_address,
             city=request.city,
-            state=request.state,
-            zip_code=request.zip_code,
+            state=request_state,
+            zip_code=request_zip,
             property_type=request.property_type,
             bedrooms=request.bedrooms,
             bathrooms=request.bathrooms,

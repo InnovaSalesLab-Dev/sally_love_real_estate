@@ -3,6 +3,7 @@ Agent roster service - loads and queries agent_roster.json as the source of trut
 """
 
 import json
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -92,13 +93,22 @@ def _get_all_transferable_agents(roster_path: Optional[str] = None) -> List[Dict
     return [a for a in combined if _agent_has_valid_phone(a)]
 
 
+def _fuzzy_score(a: str, b: str) -> float:
+    """Return similarity ratio between two strings (0.0 - 1.0)."""
+    return SequenceMatcher(None, a, b).ratio()
+
+
 def find_agent_by_name(
     name: str,
     roster_path: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
-    Find agent by name (case-insensitive, partial match).
-    E.g. "Sally" matches "Sally Love".
+    Find agent by name using a multi-pass strategy:
+      1. Exact / substring match (case-insensitive)
+      2. Last-name-only match (handles "Ulmer" matching "Jeannie Ulmer")
+      3. Fuzzy match (handles transcription variants like Jeanne→Jeannie)
+
+    Returns the best match or None.
     """
     if not name or not name.strip():
         return None
@@ -107,7 +117,10 @@ def find_agent_by_name(
     if not normalized_query:
         return None
 
-    for agent in _get_all_transferable_agents(roster_path):
+    all_agents = _get_all_transferable_agents(roster_path)
+
+    # --- Pass 1: Exact / substring match (original logic) ---
+    for agent in all_agents:
         agent_name = agent.get("name") or ""
         normalized_agent = _normalize_name(agent_name)
         # Exact match or query is contained in agent name (e.g. "sally" in "sally love")
@@ -116,6 +129,44 @@ def find_agent_by_name(
         # Agent name contained in query (e.g. caller said "Sally Love")
         if normalized_agent in normalized_query:
             return agent
+
+    # --- Pass 2: Last-name match ---
+    # Extract the last token of the query as a likely last name
+    query_parts = normalized_query.split()
+    query_last = query_parts[-1] if query_parts else ""
+    if query_last and len(query_last) >= 3:
+        last_name_matches: list[Dict[str, Any]] = []
+        for agent in all_agents:
+            agent_name = agent.get("name") or ""
+            agent_parts = _normalize_name(agent_name).split()
+            agent_last = agent_parts[-1] if agent_parts else ""
+            if agent_last and agent_last == query_last:
+                last_name_matches.append(agent)
+        if len(last_name_matches) == 1:
+            # Unique last-name hit — safe to use
+            logger.info(
+                f"Agent '{name}' matched by last name to '{last_name_matches[0].get('name')}'"
+            )
+            return last_name_matches[0]
+
+    # --- Pass 3: Fuzzy match on full name (threshold ≥ 0.80) ---
+    FUZZY_THRESHOLD = 0.80
+    best_agent: Optional[Dict[str, Any]] = None
+    best_score = 0.0
+    for agent in all_agents:
+        agent_name = agent.get("name") or ""
+        normalized_agent = _normalize_name(agent_name)
+        score = _fuzzy_score(normalized_query, normalized_agent)
+        if score > best_score:
+            best_score = score
+            best_agent = agent
+
+    if best_agent and best_score >= FUZZY_THRESHOLD:
+        logger.info(
+            f"Agent '{name}' fuzzy-matched to '{best_agent.get('name')}' "
+            f"(score={best_score:.2f})"
+        )
+        return best_agent
 
     return None
 

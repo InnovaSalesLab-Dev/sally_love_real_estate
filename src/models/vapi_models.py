@@ -193,13 +193,13 @@ class CreateBuyerLeadRequest(BaseModel):
 class CreateSellerLeadRequest(BaseModel):
     """Request model for create_seller_lead function - handles Vapi's empty strings"""
     first_name: str
-    last_name: str
+    last_name: Optional[str] = None
     phone: str
     email: Optional[str] = None
     property_address: str
     city: str
-    state: str
-    zip_code: str
+    state: str = "FL"
+    zip_code: Optional[str] = None
     property_type: Optional[str] = None
     bedrooms: Optional[int] = None
     bathrooms: Optional[float] = None

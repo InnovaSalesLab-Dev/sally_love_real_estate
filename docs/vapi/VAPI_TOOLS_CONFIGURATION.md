@@ -231,19 +231,19 @@ Click **"+ Add Property"** and add the following properties:
 | Property Name | Type | Required | Description |
 |---------------|------|----------|-------------|
 | `first_name` | string | **Yes** | Seller's first name |
-| `last_name` | string | **Yes** | Seller's last name |
+| `last_name` | string | No | Seller's last name (optional) |
 | `phone` | string | **Yes** | Phone number (will be validated and formatted) |
 | `email` | string | No | Email address |
 | `property_address` | string | **Yes** | Full property address to be sold |
 | `city` | string | **Yes** | City |
-| `state` | string | **Yes** | State (default: "FL") |
-| `zip_code` | string | **Yes** | ZIP code |
+| `state` | string | No | State (default: "FL") |
+| `zip_code` | string | No | ZIP code (optional) |
 | `property_type` | string | No | Property type (single-family, condo, townhouse, land) |
 | `bedrooms` | integer | No | Number of bedrooms |
 | `bathrooms` | number | No | Number of bathrooms |
 | `square_feet` | integer | No | Property square footage |
 | `year_built` | integer | No | Year property was built |
-| `reason_for_selling` | string | No | Reason for selling (downsizing, relocating, upgrading, etc.) |
+| `reason_for_selling` | string | No | Reason for selling (only if caller volunteers; do not probe) |
 | `timeframe` | string | No | When they want to sell ("ASAP", "1-3 months", "3-6 months", "6+ months") |
 | `estimated_value` | number | No | Owner's estimated property value |
 | `notes` | string | No | Additional notes about property condition or special circumstances |
