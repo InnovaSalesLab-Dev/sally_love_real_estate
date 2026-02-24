@@ -51,12 +51,12 @@ async def send_notification(request: SendNotificationRequest) -> VapiResponse:
         
         sent_channels = []
         errors = []
-        
+        twilio_client = TwilioClient()
+        email_client = EmailClient()
+
         # Send SMS
         if notification_type in ["sms", "both"]:
             try:
-                # Initialize Twilio client (lazy initialization)
-                twilio_client = TwilioClient()
                 sms_result = await twilio_client.send_sms(
                     to_number=phone,
                     message=request.message
@@ -71,13 +71,11 @@ async def send_notification(request: SendNotificationRequest) -> VapiResponse:
                 error_msg = str(e)
                 logger.exception(f"Unexpected error sending SMS: {error_msg}")
                 errors.append(f"SMS: {error_msg}")
-        
+
         # Send email whenever we have recipient_email (always send with SMS per requirement)
         if request.recipient_email and notification_type in ["sms", "email", "both"]:
             try:
                 email = validate_email(request.recipient_email)
-
-                email_client = EmailClient()
                 if not email_client.is_configured:
                     logger.warning("SMTP not configured - skipping email notification")
                     errors.append("Email: SMTP not configured")
@@ -98,6 +96,37 @@ async def send_notification(request: SendNotificationRequest) -> VapiResponse:
             except Exception as e:
                 logger.exception(f"Unexpected error sending email: {str(e)}")
                 errors.append(f"Email: {str(e)}")
+
+        # Broker copy: also send same SMS and email to Jeff so brokers are aware of every notification
+        if request.message:
+            jeff_phone = (settings.JEFF_NOTIFICATION_PHONE or "").strip()
+            if jeff_phone:
+                to_jeff = settings.TEST_AGENT_PHONE if settings.TEST_MODE else jeff_phone
+                try:
+                    to_num = validate_phone(to_jeff)
+                except Exception:
+                    to_num = to_jeff
+                try:
+                    await twilio_client.send_sms(to_number=to_num, message=request.message)
+                    logger.info(f"Broker copy SMS sent to Jeff: {to_num}")
+                except Exception as e:
+                    logger.warning(f"Broker copy SMS to Jeff failed: {e}")
+                    errors.append(f"Broker copy SMS: {str(e)}")
+            jeff_email = (settings.JEFF_NOTIFICATION_EMAIL or "").strip()
+            if jeff_email and email_client.is_configured:
+                try:
+                    jeff_email_valid = validate_email(jeff_email)
+                    subject = f"[Broker copy] Notification from {settings.BUSINESS_NAME}"
+                    await email_client.send_email(
+                        to_email=jeff_email_valid,
+                        subject=subject,
+                        body=request.message,
+                        html_body=f"<p>{request.message}</p>",
+                    )
+                    logger.info(f"Broker copy email sent to Jeff: {jeff_email_valid}")
+                except Exception as e:
+                    logger.warning(f"Broker copy email to Jeff failed: {e}")
+                    errors.append(f"Broker copy email: {str(e)}")
         
         # Check if at least one channel succeeded
         if not sent_channels:
